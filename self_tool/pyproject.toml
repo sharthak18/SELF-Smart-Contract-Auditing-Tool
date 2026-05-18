@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "self-auditor"
+version = "1.0.0"
+description = "SELF — Smart Contract Exploit & Logic Finder. A lightweight, hardcoded smart contract security audit tool."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+  {name = "Self Auditor", email = "audit@self.tool"},
+]
+keywords = ["smart-contract", "security", "audit", "solidity", "web3", "blockchain"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "click>=8.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+ast = ["tree-sitter>=0.20"]
+
+[project.scripts]
+self = "self_tool.self:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["self_tool*"]

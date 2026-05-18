@@ -1,0 +1,65 @@
+# Git configuration for SELF — Smart Contract Auditing Tool
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+.eggs/
+lib/
+lib64/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Test artifacts & real target projects
+tests/real_target/
+tests/*.md
+tests/*.json
+tests/contracts/self-report*.md
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SELF reports (user-generated, don't commit)
+self-report.md
+self-report.json
+*-audit-report.md
+*-audit-report.json
+
+# Ollama model cache (if stored locally)
+*.gguf
+*.bin
+
+# Node (if testing hardhat targets)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Foundry build artifacts
+out/
+cache/
