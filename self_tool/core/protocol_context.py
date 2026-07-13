@@ -1,7 +1,7 @@
 """
 SELF — Protocol Context
 Holds all extracted intent signals from documentation and NatSpec.
-Used by detectors and the LLM analyzer to reduce false positives.
+Used by detectors and reports to add unverified protocol context.
 """
 from dataclasses import dataclass, field
 from typing import Set, Dict, List, Optional
@@ -41,7 +41,7 @@ class ProtocolContext:
     function_intent: Dict[str, Set[str]] = field(default_factory=dict)
     # e.g. {"withdraw": {"permissionless", "no_deadline"}, "initialize": {"expected_public"}}
 
-    # ── Raw doc content (for LLM context) ─────────────────────────────────
+    # ── Raw documentation context ──────────────────────────────────────────
     readme_content: str = ""
     security_notes: str = ""             # SECURITY.md or @custom:security tags
 
@@ -55,7 +55,6 @@ class ProtocolContext:
 
         if self.uses_multisig and self.uses_timelock:
             s["SOL-MED-001"] = "Protocol documents Gnosis Safe multisig + timelock"
-            s["SOL-CRIT-009"] = None  # don't suppress critical tx.origin
 
         elif self.uses_multisig:
             # Soften, don't suppress
@@ -97,8 +96,8 @@ class ProtocolContext:
         """Return True if a specific function has a suppression tag."""
         return tag in self.function_intent.get(func_name, set())
 
-    def get_llm_summary(self) -> str:
-        """Short summary for LLM prompt context."""
+    def get_review_summary(self) -> str:
+        """Short summary for reports and deterministic review context."""
         lines = [
             f"Protocol: {self.protocol_name}",
             f"Type: {self.protocol_type}",

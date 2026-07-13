@@ -14,6 +14,7 @@ SKIP_DIRS = {
     "node_modules", ".git", "out", "cache", "artifacts", "build",
     "lib", ".deps", "__pycache__", ".venv", "venv", "dist",
     "coverage", ".coverage", "typechain", "typechain-types",
+    "test", "tests", "mock", "mocks",
 }
 
 SKIP_FILES = {
@@ -130,8 +131,10 @@ def discover_files(
 
     # If target is a single file
     if target_path.is_file():
-        lang = force_lang or EXT_TO_LANG.get(target_path.suffix.lower(), "solidity")
+        lang = force_lang or EXT_TO_LANG.get(target_path.suffix.lower())
         framework = detect_framework(str(target_path.parent))
+        if not lang:
+            return [], framework
         ctx = _load_file(target_path, target_path.parent, lang)
         return ([ctx] if ctx else [], framework)
 
@@ -172,17 +175,14 @@ def discover_files(
 
 
 def _load_file(filepath: Path, root: Path, language: str) -> Optional[FileContext]:
-    """Load a file and return a FileContext, or None if unreadable."""
-    try:
-        content = filepath.read_text(encoding="utf-8", errors="replace")
-        if not content.strip():
-            return None
-        relative = str(filepath.relative_to(root))
-        return FileContext(
-            path=str(filepath),
-            relative_path=relative,
-            language=language,
-            content=content,
-        )
-    except Exception:
+    """Load a source file. Empty files are ignored; read failures propagate."""
+    content = filepath.read_text(encoding="utf-8", errors="replace")
+    if not content.strip():
         return None
+    relative = str(filepath.relative_to(root))
+    return FileContext(
+        path=str(filepath),
+        relative_path=relative,
+        language=language,
+        content=content,
+    )

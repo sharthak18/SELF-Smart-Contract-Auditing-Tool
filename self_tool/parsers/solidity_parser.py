@@ -7,6 +7,12 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict
 
+# Late imports to avoid circular dependencies for typing
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from self_tool.parsers.cfg_builder import CFG
+    from self_tool.parsers.call_graph import CallGraph
+
 
 @dataclass
 class SolFunction:
@@ -22,6 +28,16 @@ class SolFunction:
     is_constructor: bool = False
     is_fallback: bool = False
     is_receive: bool = False
+    
+    # Built lazily to avoid heavy overhead if not needed
+    _cfg: Optional['CFG'] = None
+
+    @property
+    def cfg(self) -> 'CFG':
+        if self._cfg is None:
+            from self_tool.parsers.cfg_builder import build_cfg
+            self._cfg = build_cfg(self.body)
+        return self._cfg
 
 
 @dataclass
@@ -59,6 +75,15 @@ class SolContract:
     modifiers: List[SolModifier]
     is_upgradeable: bool = False
 
+    _call_graph: Optional['CallGraph'] = None
+
+    @property
+    def call_graph(self) -> 'CallGraph':
+        if self._call_graph is None:
+            from self_tool.parsers.call_graph import CallGraph
+            self._call_graph = CallGraph(self)
+        return self._call_graph
+
 
 @dataclass
 class SolidityFileInfo:
@@ -76,7 +101,7 @@ class SolidityFileInfo:
 RE_PRAGMA = re.compile(r'pragma\s+solidity\s+([^;]+);')
 RE_IMPORT = re.compile(r'import\s+[^;]+;')
 RE_CONTRACT = re.compile(
-    r'^\s*(abstract\s+)?(contract|interface|library)\s+(\w+)'
+    r'^[ \t]*(abstract\s+)?(contract|interface|library)\s+(\w+)'
     r'(?:\s+is\s+([^{]+))?\s*\{',
     re.MULTILINE
 )
@@ -85,6 +110,7 @@ RE_FUNCTION = re.compile(
     re.MULTILINE
 )
 RE_CONSTRUCTOR = re.compile(r'constructor\s*\(([^)]*)\)\s*([^{;]*)', re.MULTILINE)
+RE_SPECIAL_FUNCTION = re.compile(r'\b(fallback|receive)\s*\(\s*\)\s*([^{;]*)', re.MULTILINE)
 RE_MODIFIER_DEF = re.compile(r'modifier\s+(\w+)\s*\(([^)]*)\)', re.MULTILINE)
 RE_STATE_VAR = re.compile(
     r'^\s*([\w\[\]<>,\s]+?)\s+(public|private|internal|external)?\s*'
@@ -294,15 +320,20 @@ def _parse_functions(body: str, offset: int, full_raw: str) -> List[SolFunction]
         keywords = {"public", "external", "internal", "private", "payable", "view",
                     "pure", "returns", "virtual", "override", "memory", "storage",
                     "calldata"}
+        modifier_attrs = re.sub(r'\breturns\s*\([^)]*\)', '', attrs)
+        modifier_attrs = re.sub(r'\boverride\s*\([^)]*\)', 'override', modifier_attrs)
         modifier_words = [
-            w for w in re.findall(r'\b\w+\b', attrs)
-            if w not in keywords and not w[0].isupper() or w in ("onlyOwner",)
+            w for w in re.findall(r'\b\w+\b', modifier_attrs)
+            if (w not in keywords and not w[0].isupper()) or w in ("onlyOwner",)
         ]
         modifiers = modifier_words
 
         # Find function body
         func_pos = m.start()
-        brace_pos = body.find('{', func_pos + len(m.group(0)))
+        terminator_pos = m.end()
+        while terminator_pos < len(body) and body[terminator_pos].isspace():
+            terminator_pos += 1
+        brace_pos = terminator_pos if body[terminator_pos:terminator_pos + 1] == "{" else -1
         func_body = ""
         body_start_line = 0
         body_end_line = 0
@@ -335,7 +366,10 @@ def _parse_functions(body: str, offset: int, full_raw: str) -> List[SolFunction]
         attrs = m.group(2) or ""
         abs_pos = offset + m.start()
         line = full_raw[:abs_pos].count('\n') + 1
-        brace_pos = body.find('{', m.start())
+        terminator_pos = m.end()
+        while terminator_pos < len(body) and body[terminator_pos].isspace():
+            terminator_pos += 1
+        brace_pos = terminator_pos if body[terminator_pos:terminator_pos + 1] == "{" else -1
         func_body = ""
         if brace_pos != -1:
             fb, _, _ = _extract_braces_body(body, brace_pos)
@@ -351,6 +385,42 @@ def _parse_functions(body: str, offset: int, full_raw: str) -> List[SolFunction]
             body_start_line=line,
             body_end_line=line,
             is_constructor=True,
+        ))
+
+    # receive() and fallback()
+    for m in RE_SPECIAL_FUNCTION.finditer(body):
+        kind = m.group(1)
+        attrs = m.group(2) or ""
+        abs_pos = offset + m.start()
+        line = full_raw[:abs_pos].count('\n') + 1
+        terminator_pos = m.end()
+        while terminator_pos < len(body) and body[terminator_pos].isspace():
+            terminator_pos += 1
+        brace_pos = terminator_pos if body[terminator_pos:terminator_pos + 1] == "{" else -1
+        func_body = ""
+        body_start_line = line
+        body_end_line = line
+        if brace_pos != -1:
+            fb, _, fb_end = _extract_braces_body(body, brace_pos)
+            func_body = fb
+            abs_start = offset + brace_pos
+            body_start_line = full_raw[:abs_start].count('\n') + 1
+            abs_end = offset + fb_end if fb_end != -1 else abs_start
+            body_end_line = full_raw[:abs_end].count('\n') + 1
+        vis_m = RE_VISIBILITY.search(attrs)
+        mut_m = RE_MUTABILITY.search(attrs)
+        funcs.append(SolFunction(
+            name=kind,
+            line=line,
+            visibility=vis_m.group(1) if vis_m else "external",
+            mutability=mut_m.group(1) if mut_m else "",
+            modifiers=[],
+            params="",
+            body=func_body,
+            body_start_line=body_start_line,
+            body_end_line=body_end_line,
+            is_fallback=kind == "fallback",
+            is_receive=kind == "receive",
         ))
 
     return funcs
@@ -374,28 +444,31 @@ def _parse_modifiers(body: str, offset: int, full_raw: str) -> List[SolModifier]
 def _parse_state_vars(body: str, contract_line: int) -> List[SolStateVar]:
     """Simple heuristic extraction of state variables."""
     vars_ = []
-    # Match lines that look like state variable declarations
-    pattern = re.compile(
-        r'^\s{4}((?:mapping\s*\([^)]+\)|[\w\[\]]+(?:\s*\[\s*\])?(?:\s+\w+)?'
-        r'(?:\s*<[^>]+>)?)\s+)?(public|private|internal|external)?\s*'
-        r'(immutable|constant)?\s+(\w+)\s*[=;]',
-        re.MULTILINE
+    declaration = re.compile(
+        r'^(mapping\s*\([^)]+\)|[A-Za-z_]\w*(?:\s*\[[^\]]*\])*)\s+'
+        r'(?:(public|private|internal|external)\s+)?'
+        r'(?:(immutable|constant)\s+)?'
+        r'([A-Za-z_]\w*)\s*(?:=[^;]*)?;$'
     )
-    for m in pattern.finditer(body):
-        typ = (m.group(1) or "").strip()
-        visibility = m.group(2) or "internal"
-        special = m.group(3) or ""
-        name = m.group(4)
-        if name in ("function", "event", "modifier", "struct", "enum", "mapping"):
-            continue
-        vars_.append(SolStateVar(
-            name=name,
-            type=typ,
-            line=contract_line,
-            visibility=visibility,
-            is_immutable="immutable" in special,
-            is_constant="constant" in special,
-        ))
+    depth = 0
+    for line_offset, source_line in enumerate(body.splitlines()):
+        code = source_line.split("//", 1)[0].strip()
+        if depth == 1 and code:
+            m = declaration.match(code)
+            if m:
+                typ = m.group(1).strip()
+                visibility = m.group(2) or "internal"
+                special = m.group(3) or ""
+                name = m.group(4)
+                vars_.append(SolStateVar(
+                    name=name,
+                    type=typ,
+                    line=contract_line + line_offset,
+                    visibility=visibility,
+                    is_immutable=special == "immutable",
+                    is_constant=special == "constant",
+                ))
+        depth += source_line.count("{") - source_line.count("}")
     return vars_
 
 

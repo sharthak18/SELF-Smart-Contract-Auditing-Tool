@@ -289,7 +289,7 @@ def _collateral_manipulation(file_ctx, content, issues):
         issues.append(Issue(
             id="LEND-HIGH-004",
             title="Lending: Collateral Valuation Uses Manipulable Spot Price",
-            severity=Severity.CRITICAL, confidence=Confidence.MEDIUM,
+            severity=Severity.HIGH, confidence=Confidence.MEDIUM,
             file=file_ctx.relative_path, line=line,
             snippet=file_ctx.get_snippet(line, context=4),
             description=(

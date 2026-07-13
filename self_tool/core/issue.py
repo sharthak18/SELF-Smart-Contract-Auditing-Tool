@@ -53,13 +53,15 @@ class Issue:
     references: List[str] = field(default_factory=list)  # Links, SWC IDs etc.
     language: str = "solidity"       # Language this detector targets
 
-    # ── Intelligence layer (Phase 3) ──────────────────────────────────────
-    suppressed: bool = False                 # Suppressed by doc context or AI
+    # ── Context and deterministic review layer ─────────────────────────────
+    suppressed: bool = False                 # Suppressed by explicit doc-context opt-in
     suppression_reason: str = ""            # Why suppressed
+    context_note: str = ""                  # Untrusted documentation context
 
-    ai_verdict: Optional[str] = None        # CONFIRMED / LIKELY_FALSE_POSITIVE / UNCERTAIN
-    ai_reasoning: Optional[str] = None      # LLM explanation
-    ai_model: Optional[str] = None          # Model used
+    review_status: Optional[str] = None
+    review_reasoning: Optional[str] = None
+    review_test: Optional[str] = None
+    review_engine: Optional[str] = None
 
     def __hash__(self):
         return hash((self.id, self.file, self.line))

@@ -207,7 +207,7 @@ def _missing_access_control(file_ctx, content, issues):
     auth_pattern = re.compile(
         r'(onlyOwner|onlyAdmin|onlyRole|onlyMinter|onlyGovernance|onlyOperator'
         r'|require\s*\(\s*msg\.sender|hasRole\s*\(|_checkRole|AccessControl'
-        r'|Ownable|whenNotPaused)', re.IGNORECASE
+        r'|Ownable|whenNotPaused|if\s*\(\s*msg\.sender)', re.IGNORECASE
     )
     for m in critical_fn.finditer(content):
         fname = m.group(1)

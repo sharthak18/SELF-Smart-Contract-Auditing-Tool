@@ -1,331 +1,260 @@
-# SELF — Smart Contract Auditing Tool
-### *The Devil That Kills All Evil*
+# SELF - Smart Contract Security Auditor
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue)](https://python.org)
-[![Version](https://img.shields.io/badge/Version-2.0.0-red)](.)
-[![Languages](https://img.shields.io/badge/Languages-5-orange)](.)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
+[![Version](https://img.shields.io/badge/Version-2.2.0-red)](.)
+[![Rules](https://img.shields.io/badge/Rules-95-orange)](.)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-A **zero-cloud, intelligent smart contract security auditing tool** for security researchers and auditors.
+SELF is a local, open-source first-pass security auditor for smart contracts. It
+combines deterministic vulnerability rules, one hardcoded deep-review profile
+per detector, documentation context, and a Solidity pre-audit "x-ray" report.
 
-Reads your protocol's docs → understands its intent → scans for 95+ vulnerability patterns → produces professional audit reports. Optional local LLM analysis via Ollama for false-positive filtering.
+It runs without cloud APIs, API keys, model servers, network access, or a
+Solidity compiler. It is not a replacement for manual review, fuzzing, formal
+verification, or an independent professional audit.
 
-**No cloud. No API keys. No compiler needed. Runs on Intel i3 + 4GB RAM.**
+## What's New in 2.2
 
----
+- Removed the optional model/Ollama path and all model fallback behavior.
+- Added 95 explicit built-in review profiles: one for every detector ID.
+- Every finding now includes a hardcoded proof obligation and regression-test recipe.
+- Startup fails when a detector lacks a review profile or a profile has no detector.
+- Detector import and runtime failures always exit with code `3`; strict mode is the default.
+- Unreadable source or documentation files fail the audit instead of being skipped.
+- JSON and Markdown reports always include deterministic review results.
+- `--knowledge-status` proves review-profile coverage alongside OWASP coverage.
+
+Version 2.2 includes the 2.1 package, parser, detector-health, documentation
+safety, x-ray, and OWASP knowledge-base upgrades.
+
+The x-ray and review-lens design is informed by the current
+[Pashov Audit Group skills](https://github.com/pashov/skills), including its
+June 4, 2026 v3 attacker-framing and gap-hunter update. SELF implements a
+deterministic local workflow rather than copying its multi-agent prompts.
 
 ## Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/self-auditor.git
-cd self-auditor/self_tool
-pip install -e .
+git clone https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool.git
+cd SELF-Smart-Contract-Auditing-Tool
+python3 -m pip install -e .
 ```
 
-Verify:
+Verify the installation:
+
 ```bash
-self --version   # Should print SELF v2.0.0
+self --version
 self --list-detectors
+self --knowledge-status
 ```
 
----
-
-## Usage
+## Scan
 
 ```bash
-# Scan a project (reads docs + NatSpec automatically)
+# Project or single file
 self .
-self /path/to/protocol
-
-# Scan a single file
 self src/Vault.sol
 
-# Common options
-self . --severity high          # Only High and Critical
-self . --no-info                # Hide Info findings
-self . --output report.md       # Custom report path
-self . --json                   # Also export JSON (CI/CD)
-self . --show-suppressed        # Show what docs suppressed and why
-self . --no-docs                # Skip doc reading (pure static mode)
+# Reporting and CI
+self . --severity high
+self . --output audit.md --json
+self . --no-info
+self . --quiet
 
-# AI-assisted analysis (requires Ollama — see below)
-self . --ai                     # AI reviews Critical+High findings
-self . --ai --ai-all            # AI reviews everything
-self . --ai --ai-model qwen2.5-coder:7b
-self . --ai --ai-timeout 60     # Skip if LLM takes >60s
+# Include documentation context without trusting it as proof
+self .
 
-# List all built-in detectors
-self --list-detectors
+# Legacy opt-in: allow documentation claims to suppress findings
+self . --trust-doc-suppressions --show-suppressed
 ```
 
----
+Project scans skip common generated, dependency, test, and mock directories.
+Passing a test fixture as the direct target still scans that file.
 
-## Real-World Test Results
+## X-Ray
 
-Tested on **Damn Vulnerable DeFi** (30 contracts, 2,283 lines):
+Generate a deterministic pre-audit map alongside the normal findings report:
 
-| Metric | Result |
-|--------|--------|
-| Scan time | **0.18 seconds** |
-| Files scanned | 30 |
-| Critical findings | 13 |
-| High findings | 21 |
-| Medium findings | 13 |
-| Context-suppressed | 7 |
-
-**Known vulnerabilities correctly caught:**
-- ✅ `TrusterLenderPool` — arbitrary external call
-- ✅ `SelfiePool` — flash loan + governance attack
-- ✅ `PuppetV2Pool` — spot price oracle manipulation
-- ✅ `FreeRiderNFTMarketplace` — reentrancy + flash loan
-- ✅ `ClimberVault` — access control bypass
-- ✅ `SideEntranceLenderPool` — flash loan LP attack
-- ✅ `TheRewarderPool` — reward sandwich attack
-- ✅ AMM xy=k invariant violations
-
----
-
-## What It Detects (~95 Patterns)
-
-### Critical (10 detectors)
-Reentrancy (classic, cross-function, read-only/Curve), unchecked `.call()`, arbitrary `delegatecall`, unprotected `selfdestruct`, uninitialized proxy, proxy storage collision, `tx.origin` auth, signature replay.
-
-### High (13 detectors)
-Oracle spot price (no TWAP), integer overflow, unchecked math blocks, flash loan no validation, missing access control, ERC20 approval race, unbounded loop DoS, unchecked ERC20 transfer, zero slippage (MEV sandwich), `block.timestamp` randomness, divide-before-multiply, flash loan governance, unprotected `initialize()`.
-
-### Protocol Packs (auto-detected)
-| Pack | Trigger | Key Patterns |
-|------|---------|-------------|
-| **AMM** | swap/reserve keywords | xy=k invariant, LP inflation, FoT tokens, slippage |
-| **Lending** | borrow/collateral/liquidate | Accrual missing, cToken inflation, self-liquidation |
-| **Bridge** | bridge/crossChain/LayerZero | Message replay, validator threshold, zero root |
-| **Staking** | stake/reward/harvest | Checkpoint missing, harvest reentrancy, sandwich |
-
-### Medium/Low/Info
-Centralization risk, zero-address checks, missing deadline, stale Chainlink, ERC777 hooks, missing events, unsafe downcast, ERC-4626 inflation, floating pragma, outdated compiler, hardcoded addresses, missing NatSpec.
-
-### Multi-Language Support
-| Language | Detectors | Frameworks |
-|----------|-----------|-----------|
-| Solidity | 44+ | Foundry, Hardhat, Truffle, Brownie |
-| Vyper | 5 | Foundry, Brownie |
-| Rust/Anchor | 6 | Anchor (Solana) |
-| Huff | 4 | Foundry |
-| Move | 5 | Aptos, Sui |
-
----
-
-## Intelligence Layer
-
-### Doc Reader (runs automatically)
-SELF reads before scanning:
-- `README.md`, `WHITEPAPER.md`, `SECURITY.md`, `docs/*.md`
-- `audits/*.md` (previous audit reports)
-- NatSpec: `@dev`, `@notice`, `@custom:security`
-- Import statements (SafeERC20, ReentrancyGuard, etc.)
-
-**Suppression examples:**
-```
-"Gnosis Safe" in README    → centralization_risk severity reduced
-"TWAP oracle" in docs      → oracle_spot_price suppressed
-SafeERC20 import detected  → unchecked_transfer suppressed
-@dev permissionless        → access_control suppressed for that function
-```
-
-Use `--show-suppressed` to see everything that was suppressed and why.
-
-### Local LLM via Ollama (optional)
 ```bash
-# Install Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Pull model (4GB, works on 8GB RAM)
-ollama pull deepseek-coder:6.7b    # Recommended
-# OR
-ollama pull qwen2.5-coder:7b       # Also excellent
-
-# Run with AI
-self . --ai
+self . --xray
+self . --xray --xray-output reports/protocol-xray.md
 ```
 
-LLM sees: `[protocol docs] + [flagged code] + [finding]`  
-Returns: `CONFIRMED / LIKELY_FALSE_POSITIVE / UNCERTAIN` + reasoning
+The x-ray report includes:
 
-Without Ollama, SELF works perfectly — `--ai` shows a helpful skip message.
+- State-changing `public` and `external` entry points
+- `receive()` and `fallback()` entry points
+- Permissionless, caller-restricted, role-gated, and admin classification
+- Value direction, external calls, state writes, and reentrancy guards
+- Extracted `require` and `assert` predicates as invariant candidates
+- Fuzz and invariant test posture
+- High-churn files and security-relevant git commit subjects
+- Independent review lenses for access, economics, execution, math, and trust gaps
 
----
+These are static leads. A guard candidate is not proof that a protocol invariant
+holds across calls or contracts.
 
-## Custom Detectors (Query DSL)
+## Rule Coverage
 
-Write custom rules in plain Python:
+SELF currently discovers 95 unique rule IDs directly from detector source:
+
+| Language | Rules |
+|---|---:|
+| Solidity and EVM protocol packs | 75 |
+| Rust / Solana / Anchor | 6 |
+| Move | 5 |
+| Vyper | 5 |
+| Huff | 4 |
+
+Solidity coverage includes reentrancy, access control, low-level calls,
+signatures, proxy initialization and storage, oracle use, arithmetic, token
+handling, DoS, and protocol-specific AMM, lending, bridge, and staking patterns.
+
+Run `self --list-detectors` for the implementation-derived catalog.
+
+At startup, SELF compares that catalog with the hardcoded review-profile table.
+Missing and extra IDs are fatal configuration errors, so detector and review
+coverage cannot quietly drift apart.
+
+## Knowledge Base
+
+`self_tool/knowledge/security_knowledge.json` stores defensive metadata:
+
+- OWASP Smart Contract Top 10: 2026 categories and detector mappings
+- Active official standards and advisory sources
+- Community incident-fixture sources with constrained ingestion rules
+- Legacy source status, including the SWC Registry
+- A policy excluding secrets, stolen data, weaponized payloads, and bulk copies
+  of third-party reports
+
+Inspect it with:
+
+```bash
+self --knowledge-status
+```
+
+The database is designed for provenance and reviewability. It does not claim to
+contain every historical or future exploit, and it does not automatically
+download proof-of-concept attack code.
+
+## Documentation Context
+
+SELF reads project documentation, NatSpec, imports, and framework configuration
+before scanning. Signals such as SafeERC20, Chainlink, TWAP, timelocks,
+multisigs, upgradeability, and emergency pause mechanisms are attached to
+findings as **unverified context**.
+
+By default, a README sentence cannot make a code finding disappear. The
+`--trust-doc-suppressions` option exists for compatibility but should not be
+used as a CI quality gate without human review.
+
+## Built-In Deep Review
+
+Deep review runs on every finding with no flag and no external service. Each
+detector ID has an explicit, source-controlled profile containing:
+
+- The security lens to apply
+- The proof obligation a reviewer must establish
+- A focused adversarial or regression-test recipe
+- A deterministic status: `STATIC_MATCH`, `CONTEXT_REQUIRED`, `MANUAL_PROOF`,
+  or `INFORMATIONAL`
+
+`STATIC_MATCH` means the detector found its coded pattern with high confidence.
+It does not claim that exploitability has been proven. Findings remain visible
+until a human verifies the code and the suggested test.
+
+## Custom Rules
+
+Rules can use the local query DSL:
 
 ```python
-# self_tool/detectors/solidity/my_custom.py
 from self_tool.query import Q
+
 
 def detect(file_ctx):
     return (
         Q(file_ctx)
         .functions()
-        .visibility('external', 'public')
-        .has_pattern(r'\.call\s*\{')
-        .not_has_pattern(r'nonReentrant')
+        .visibility("external", "public")
+        .has_pattern(r"\.call\s*\{")
+        .not_has_pattern(r"nonReentrant")
         .as_issues(
-            id='CUSTOM-001',
-            title='Unchecked external call in {fname}()',
-            severity='HIGH',
-            confidence='MEDIUM',
-            description='...',
-            exploit_scenario='...',
-            remediation='...',
+            id="CUSTOM-001",
+            title="External call in {fname}()",
+            severity="HIGH",
+            confidence="MEDIUM",
+            description="Review the external call ordering in {fname}().",
+            exploit_scenario="A callback may observe or modify inconsistent state.",
+            remediation="Apply checks-effects-interactions and a suitable guard.",
         )
     )
 ```
 
-SELF auto-discovers it — no registration needed.
+Place the module under the appropriate `self_tool/detectors/<language>/`
+directory. SELF discovers modules automatically, and the AST catalog discovers
+literal `Issue(...)` and `.as_issues(...)` rule metadata.
 
----
+Also add the new detector ID to `REVIEW_PROFILES` in
+`self_tool/core/builtin_reviewer.py`. SELF intentionally refuses to start when
+detector IDs and hardcoded review profiles do not match exactly.
 
-## Auditor Workflow
-
-### First time on a new protocol:
-```bash
-# 1. Clone or download the protocol
-git clone https://github.com/protocol/contracts.git target
-
-# 2. Run SELF (reads their docs automatically)
-self target/ --output target-audit.md
-
-# 3. Review the report (check Critical+High first)
-# The "Protocol Intelligence" section shows what signals were found in docs
-
-# 4. If you have Ollama running, add AI review:
-self target/ --output target-audit.md --ai
-
-# 5. Check what was suppressed (verify suppression is correct)
-self target/ --output target-audit.md --show-suppressed
-
-# 6. For CI/CD pipelines:
-self target/ --severity high --json --quiet
-echo "Exit code: $?"  # 0=clean, 1=high, 2=critical
-```
-
-### NatSpec suppression tags (add to your contracts):
-```solidity
-/// @dev permissionless by design
-function openFunction() external { ... }
-
-/// @custom:security no reentrancy risk — all state settled before external call
-function safeWithdraw() external { ... }
-
-/// @dev deadline checked in the router, not here
-function swap() external { ... }
-```
-
----
-
-## Report Structure
-
-Every report includes:
-1. **Protocol Intelligence** — signals from docs, what was suppressed
-2. **Summary table** — active vs suppressed counts per severity  
-3. **Findings index** — clickable table with AI verdict column (if `--ai`)
-4. **Detailed findings** — description + code snippet + exploit scenario + remediation + references
-5. **AI analysis block** per finding (if `--ai`)
-6. **Suppressed findings** (if `--show-suppressed`)
-7. **Files scanned** table
-
----
-
-## Exit Codes (CI/CD)
+## Exit Codes
 
 | Code | Meaning |
-|------|---------|
-| `0` | No Critical or High findings |
-| `1` | High severity finding present |
-| `2` | Critical severity finding present |
+|---:|---|
+| `0` | No active Critical or High findings |
+| `1` | At least one active High finding |
+| `2` | At least one active Critical finding |
+| `3` | Detector import or runtime failure; the audit is incomplete |
+| `4` | No supported source files found |
 
 GitHub Actions example:
+
 ```yaml
-- name: SELF Security Scan
-  run: |
-    pip install -e ./self_tool
-    self src/ --severity high --json --quiet
+- name: Install SELF
+  run: python3 -m pip install -e .
+
+- name: Audit contracts
+  run: self src --severity high --json --quiet
 ```
 
----
+## Development
 
-## Project Structure
+The regression suite uses the Python standard library:
 
-```
-self_tool/
-├── self.py                      # CLI entry point
-├── query.py                     # Glider-inspired Query DSL
-├── requirements.txt
-├── pyproject.toml
-├── core/
-│   ├── issue.py                 # Finding data model
-│   ├── scanner.py               # File discovery + framework detection
-│   ├── detector_engine.py       # Orchestrator + doc suppression
-│   ├── reporter.py              # Markdown report generator
-│   ├── doc_reader.py            # Documentation intelligence
-│   ├── protocol_context.py      # Intent context + suppression rules
-│   └── llm_analyzer.py          # Ollama local LLM integration
-├── parsers/
-│   └── solidity_parser.py
-├── detectors/
-│   ├── solidity/                # 44+ detectors + 4 protocol packs
-│   │   ├── reentrancy.py
-│   │   ├── dangerous_calls.py
-│   │   ├── proxy_and_auth.py
-│   │   ├── high_oracle_overflow_access.py
-│   │   ├── high_misc.py
-│   │   ├── medium_detectors.py
-│   │   ├── low_info_detectors.py
-│   │   ├── taint_tracker.py
-│   │   ├── pack_amm.py
-│   │   ├── pack_lending.py
-│   │   ├── pack_bridge.py
-│   │   └── pack_staking.py
-│   ├── vyper/
-│   ├── rust/
-│   ├── huff/
-│   └── move/
-└── knowledge/
-    └── exploit_patterns.json
+```bash
+python3 -m unittest discover -s tests -p "test_*.py" -v
+python3 -m compileall -q self_tool
+python3 -m pip wheel . --no-deps --no-build-isolation -w /tmp/self-wheel
 ```
 
----
+The deliberately vulnerable fixture at
+`tests/contracts/VulnerableVault.sol` verifies detector execution and report
+generation. Never deploy it.
 
-## Known Limitations
+## Limits
 
-| Issue | Details |
-|-------|---------|
-| False positives on interfaces | `SOL-CRIT-003` can fire on interface function declarations that contain `transfer` — verify manually |
-| No symbolic execution | Deep math overflow in complex formulas may be missed |
-| No inter-contract analysis | Cross-contract call chains not fully tracked yet |
-| Protocol-specific logic | Business logic bugs require manual review |
+- Most rules are heuristic and can produce false positives.
+- Regex and lightweight parsing do not replace a compiler-backed AST.
+- Cross-contract call graphs and symbolic execution are not implemented.
+- Business logic and economic safety require protocol-specific invariants.
+- The x-ray state-write mapper resolves direct writes, not arbitrary inherited
+  or interprocedural effects.
+- New attack classes require maintained rules, tests, and source review.
 
-**SELF is a first-pass tool. Always follow up with manual review.**
+## Primary References
 
----
+- [OWASP Smart Contract Security](https://scs.owasp.org/)
+- [OWASP Smart Contract Top 10: 2026](https://scs.owasp.org/Top10/)
+- [Solidity Security Considerations](https://docs.soliditylang.org/en/latest/security-considerations.html)
+- [Ethereum Improvement Proposals](https://eips.ethereum.org/)
+- [OpenZeppelin security advisories](https://github.com/OpenZeppelin/openzeppelin-contracts/security/advisories)
+- [Vyper security advisories](https://github.com/vyperlang/vyper/security/advisories)
+- [Pashov Audit Group skills](https://github.com/pashov/skills)
 
-## Sources
+Community incident material is used only as defensive metadata or isolated test
+fixtures and must be independently verified before becoming a detector.
 
-Detectors sourced from real incidents and research:
+## License
 
-| Source | Used For |
-|--------|---------|
-| Rekt.news | Real exploit patterns |
-| Code4rena / Sherlock | Contest findings (2021-2025) |
-| Trail of Bits | Vulnerability classes |
-| OpenZeppelin | ERC standards, proxy patterns |
-| Pashov Audit Group | Methodology |
-| Immunefi / Spearbit | Bug bounty patterns |
-| SWC Registry | Weakness classification |
-| Neodyme / Soteria | Solana/Anchor security |
-| DeFiHackLabs | PoC exploit database |
-
----
-
-*Built for Web3 security researchers. Zero cloud. Zero tracking. Runs on your machine.*
+MIT. See [LICENSE](LICENSE).

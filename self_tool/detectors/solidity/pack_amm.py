@@ -302,7 +302,7 @@ def _liquidity_lock_bypass(file_ctx, content, issues):
     AMM-HIGH-004: removeLiquidity without checking minimum time lock.
     Flash loan + addLiquidity + removeLiquidity in same block to drain fees.
     """
-    has_remove = bool(re.search(r'function\s+(removeLiquidity|withdraw|burnLP|burn)\s*\(', content))
+    has_remove = bool(re.search(r'function\s+(removeLiquidity|burnLP)\s*\(', content))
     if not has_remove:
         return
     has_time_lock = bool(re.search(
@@ -311,7 +311,7 @@ def _liquidity_lock_bypass(file_ctx, content, issues):
         content
     ))
     if not has_time_lock:
-        m = re.search(r'function\s+(removeLiquidity|withdraw|burnLP|burn)\s*\(', content)
+        m = re.search(r'function\s+(removeLiquidity|burnLP)\s*\(', content)
         line = content[:m.start()].count('\n') + 1
         issues.append(Issue(
             id="AMM-HIGH-004",

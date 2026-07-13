@@ -160,7 +160,7 @@ class DocReader:
                     self.ctx.has_audit_history = True
 
         combined = ' '.join(all_text).lower()
-        self.ctx.readme_content = combined[:5000]  # Cap for LLM context
+        self.ctx.readme_content = combined[:5000]  # Bound stored report context
         self.ctx.security_notes = ' '.join(security_text)[:2000]
 
         # Extract protocol name from README h1
@@ -327,17 +327,10 @@ class DocReader:
 
     @staticmethod
     def _safe_read(path: Path) -> str:
-        try:
-            return path.read_text(encoding='utf-8', errors='replace')
-        except Exception:
-            return ''
+        return path.read_text(encoding='utf-8', errors='replace')
 
 
 def build_protocol_context(project_root: str) -> ProtocolContext:
     """Entry point — build ProtocolContext from a project root directory."""
-    try:
-        reader = DocReader(project_root)
-        return reader.build()
-    except Exception:
-        # Never crash the scan due to doc reading
-        return ProtocolContext()
+    reader = DocReader(project_root)
+    return reader.build()

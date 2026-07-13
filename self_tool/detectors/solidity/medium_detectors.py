@@ -118,13 +118,12 @@ def _missing_zero_address(file_ctx, content, issues):
 
 def _missing_deadline(file_ctx, content, issues):
     """SOL-MED-003: Swap/permit/signature missing deadline check."""
-    has_swap = bool(re.search(r'(swap|addLiquidity|removeLiquidity|permit)', content, re.IGNORECASE))
-    if not has_swap:
+    m = re.search(r'(swap|addLiquidity|removeLiquidity|permit)', content, re.IGNORECASE)
+    if not m:
         return
     has_deadline = bool(re.search(r'(deadline|expiry|expiration|validUntil)', content, re.IGNORECASE))
     if has_deadline:
         return
-    m = re.search(r'(swap|addLiquidity|permit)', content, re.IGNORECASE)
     line = content[:m.start()].count('\n') + 1
     issues.append(Issue(
         id="SOL-MED-003",
@@ -151,8 +150,8 @@ def _missing_deadline(file_ctx, content, issues):
 
 def _stale_price_feed(file_ctx, content, issues):
     """SOL-MED-004: Chainlink oracle used without staleness check."""
-    has_chainlink = bool(re.search(r'(latestRoundData|AggregatorV3Interface)', content))
-    if not has_chainlink:
+    m = re.search(r'(latestRoundData|AggregatorV3Interface)', content)
+    if not m:
         return
     has_staleness = bool(re.search(
         r'(updatedAt|answeredInRound|roundId|block\.timestamp\s*-\s*updatedAt'
@@ -160,7 +159,6 @@ def _stale_price_feed(file_ctx, content, issues):
     ))
     if has_staleness:
         return
-    m = re.search(r'latestRoundData', content)
     line = content[:m.start()].count('\n') + 1
     issues.append(Issue(
         id="SOL-MED-004",
@@ -190,13 +188,12 @@ def _stale_price_feed(file_ctx, content, issues):
 
 def _erc777_hook(file_ctx, content, issues):
     """SOL-MED-005: ERC777 tokensReceived hook enabling reentrancy."""
-    has_777 = bool(re.search(r'(ERC777|IERC777|tokensReceived|_callTokensReceived)', content))
-    if not has_777:
+    m = re.search(r'(ERC777|IERC777|tokensReceived|_callTokensReceived)', content)
+    if not m:
         return
     has_guard = bool(re.search(r'(nonReentrant|ReentrancyGuard|_status)', content))
     if has_guard:
         return
-    m = re.search(r'(ERC777|tokensReceived)', content)
     line = content[:m.start()].count('\n') + 1
     issues.append(Issue(
         id="SOL-MED-005",
@@ -342,8 +339,8 @@ def _gas_griefing(file_ctx, content, issues):
 
 def _erc4626_inflation(file_ctx, content, issues):
     """SOL-MED-010: ERC-4626 vault missing inflation attack protection."""
-    is_4626 = bool(re.search(r'(ERC4626|previewDeposit|convertToShares|totalAssets)', content))
-    if not is_4626:
+    m = re.search(r'(ERC4626|previewDeposit|convertToShares|totalAssets)', content)
+    if not m:
         return
     has_protection = bool(re.search(
         r'(MINIMUM_SHARES|deadShares|_decimalsOffset|virtual shares|dead address'
@@ -351,7 +348,6 @@ def _erc4626_inflation(file_ctx, content, issues):
     ))
     if has_protection:
         return
-    m = re.search(r'ERC4626|convertToShares', content)
     line = content[:m.start()].count('\n') + 1
     issues.append(Issue(
         id="SOL-MED-010",

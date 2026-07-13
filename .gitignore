@@ -48,10 +48,11 @@ Thumbs.db
 # SELF reports (user-generated, don't commit)
 self-report.md
 self-report.json
+self-xray.md
 *-audit-report.md
 *-audit-report.json
 
-# Ollama model cache (if stored locally)
+# Local model artifacts are never repository inputs
 *.gguf
 *.bin
 

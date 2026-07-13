@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-06-09",
+  "policy": {
+    "purpose": "Defensive detection, threat modeling, test design, and remediation.",
+    "stored_content": "Taxonomy identifiers, source metadata, detector mappings, and defensive notes.",
+    "excluded_content": [
+      "weaponized exploit payloads",
+      "private or stolen data",
+      "credentials and secrets",
+      "bulk copies of third-party reports"
+    ]
+  },
+  "taxonomies": [
+    {
+      "id": "owasp-smart-contract-top-10-2026",
+      "name": "OWASP Smart Contract Top 10: 2026",
+      "url": "https://scs.owasp.org/Top10/",
+      "categories": [
+        {
+          "id": "SC01:2026",
+          "name": "Access Control Vulnerabilities",
+          "detector_ids": ["SOL-HIGH-005", "SOL-CRIT-009", "SOL-CRIT-006", "SOL-HIGH-013", "MOV-HIGH-003", "SOL-RUST-001", "SOL-RUST-002"]
+        },
+        {
+          "id": "SC02:2026",
+          "name": "Business Logic Vulnerabilities",
+          "detector_ids": ["AMM-CRIT-001", "LEND-CRIT-001", "LEND-CRIT-002", "STAKE-CRIT-001", "SOL-MED-010", "SOL-CRIT-014", "SOL-HIGH-014", "SOL-HIGH-018", "SOL-LOW-008", "SOL-LOW-009"]
+        },
+        {
+          "id": "SC03:2026",
+          "name": "Price Oracle Manipulation",
+          "detector_ids": ["SOL-HIGH-001", "LEND-HIGH-004", "AMM-CRIT-002", "SOL-MED-004", "SOL-HIGH-019"]
+        },
+        {
+          "id": "SC04:2026",
+          "name": "Flash Loan-Facilitated Attacks",
+          "detector_ids": ["SOL-HIGH-004", "SOL-HIGH-012", "AMM-HIGH-004", "STAKE-HIGH-002"]
+        },
+        {
+          "id": "SC05:2026",
+          "name": "Lack of Input Validation",
+          "detector_ids": ["SOL-MED-002", "SOL-MED-003", "SOL-MED-007", "HUFF-MED-001", "VYP-HIGH-001", "SOL-HIGH-023", "SOL-MED-014"]
+        },
+        {
+          "id": "SC06:2026",
+          "name": "Unchecked External Calls",
+          "detector_ids": ["SOL-CRIT-004", "SOL-HIGH-008", "VYP-CRIT-002", "SOL-RUST-003", "SOL-HIGH-016", "SOL-HIGH-024"]
+        },
+        {
+          "id": "SC07:2026",
+          "name": "Arithmetic Errors (Rounding and Precision)",
+          "detector_ids": ["SOL-HIGH-003", "SOL-HIGH-011", "SOL-MED-008", "AMM-MED-001", "SOL-RUST-005"]
+        },
+        {
+          "id": "SC08:2026",
+          "name": "Reentrancy Attacks",
+          "detector_ids": ["SOL-CRIT-001", "SOL-CRIT-002", "SOL-CRIT-003", "SOL-MED-005", "STAKE-CRIT-002", "VYP-CRIT-001", "SOL-CRIT-011"]
+        },
+        {
+          "id": "SC09:2026",
+          "name": "Integer Overflow and Underflow",
+          "detector_ids": ["SOL-HIGH-002", "VYP-HIGH-002", "SOL-RUST-005", "MOV-HIGH-002", "STAKE-HIGH-001"]
+        },
+        {
+          "id": "SC10:2026",
+          "name": "Proxy and Upgradeability Vulnerabilities",
+          "detector_ids": ["SOL-CRIT-007", "SOL-CRIT-008", "SOL-HIGH-013", "SOL-INFO-002", "SOL-CRIT-012", "SOL-HIGH-020"]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "owasp-scs",
+      "name": "OWASP Smart Contract Security",
+      "url": "https://scs.owasp.org/",
+      "kind": "standard",
+      "status": "active",
+      "ingestion": "Identifiers and defensive taxonomy mappings"
+    },
+    {
+      "id": "solidity-security",
+      "name": "Solidity Security Considerations",
+      "url": "https://docs.soliditylang.org/en/latest/security-considerations.html",
+      "kind": "official-documentation",
+      "status": "active",
+      "ingestion": "Manual rule review"
+    },
+    {
+      "id": "ethereum-eips",
+      "name": "Ethereum Improvement Proposals",
+      "url": "https://eips.ethereum.org/",
+      "kind": "standard",
+      "status": "active",
+      "ingestion": "Referenced standards and behavior changes"
+    },
+    {
+      "id": "openzeppelin",
+      "name": "OpenZeppelin Contracts and Advisories",
+      "url": "https://github.com/OpenZeppelin/openzeppelin-contracts/security/advisories",
+      "kind": "official-advisory",
+      "status": "active",
+      "ingestion": "Advisory metadata and remediation review"
+    },
+    {
+      "id": "vyper-advisories",
+      "name": "Vyper Security Advisories",
+      "url": "https://github.com/vyperlang/vyper/security/advisories",
+      "kind": "official-advisory",
+      "status": "active",
+      "ingestion": "Affected-version metadata"
+    },
+    {
+      "id": "github-advisories",
+      "name": "GitHub Security Advisories",
+      "url": "https://docs.github.com/en/rest/security-advisories/global-advisories",
+      "kind": "advisory-feed",
+      "status": "active",
+      "ingestion": "Future metadata-only updater"
+    },
+    {
+      "id": "nvd",
+      "name": "NIST National Vulnerability Database",
+      "url": "https://nvd.nist.gov/developers/vulnerabilities",
+      "kind": "advisory-feed",
+      "status": "active",
+      "ingestion": "Future metadata-only updater"
+    },
+    {
+      "id": "pashov-skills",
+      "name": "Pashov Audit Group Skills",
+      "url": "https://github.com/pashov/skills",
+      "kind": "methodology",
+      "status": "active",
+      "ingestion": "Workflow and review methodology"
+    },
+    {
+      "id": "defihacklabs",
+      "name": "DeFiHackLabs",
+      "url": "https://github.com/SunWeb3Sec/DeFiHackLabs",
+      "kind": "community-incident-fixtures",
+      "status": "active",
+      "ingestion": "Manual incident metadata and isolated regression fixtures only"
+    },
+    {
+      "id": "swc-registry",
+      "name": "Smart Contract Weakness Classification Registry",
+      "url": "https://swcregistry.io/",
+      "kind": "legacy-taxonomy",
+      "status": "legacy",
+      "ingestion": "Compatibility identifiers; prefer OWASP SCWE for new mappings"
+    }
+  ]
+}

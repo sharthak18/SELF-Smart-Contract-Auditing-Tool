@@ -117,9 +117,9 @@ def _erc20_transfer_unchecked(file_ctx, content, issues):
     """SOL-HIGH-008: ERC20 transfer/transferFrom return value not checked."""
     # .transfer( or .transferFrom( not captured in bool
     pattern = re.compile(
-        r'(?<!bool\s)(?<!\(bool\s*\w+\s*,\s*)(\w+(?:\.\w+)*)\.'
+        r'^[ \t]*(\w+(?:\.\w+)*)\.'
         r'(transfer|transferFrom)\s*\([^)]+\)\s*;',
-        re.MULTILINE
+        re.MULTILINE,
     )
     safeTransfer = re.compile(r'(safeTransfer|SafeERC20)', re.MULTILINE)
     for m in pattern.finditer(content):

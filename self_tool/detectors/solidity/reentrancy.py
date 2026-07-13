@@ -206,15 +206,21 @@ def _detect_cross_function_reentrancy(file_ctx: FileContext, issues: List[Issue]
     content = file_ctx.content
 
     # Look for contracts with multiple external-call functions sharing state
-    # Heuristic: multiple public/external functions with .call( and no global nonReentrant
+    # Heuristic: multiple public/external functions with .call( and no global nonReentrant and no access control
     func_names_with_calls = []
     func_pattern = re.compile(
-        r'function\s+(\w+)\s*\([^)]*\)\s*(?:public|external)[^{]*\{',
+        r'function\s+(\w+)\s*\([^)]*\)\s*(?:public|external)([^{]*)\{',
         re.MULTILINE
+    )
+    auth_pattern = re.compile(
+        r'(onlyOwner|onlyAdmin|onlyRole|onlyMinter|onlyGovernance|onlyOperator'
+        r'|require\s*\(\s*msg\.sender|hasRole\s*\(|_checkRole|AccessControl'
+        r'|Ownable|if\s*\(\s*msg\.sender)', re.IGNORECASE
     )
 
     for m in func_pattern.finditer(content):
         fname = m.group(1)
+        attrs = m.group(2)
         func_start = m.end()
         depth = 1
         i = func_start
@@ -226,7 +232,8 @@ def _detect_cross_function_reentrancy(file_ctx: FileContext, issues: List[Issue]
             i += 1
         body = content[func_start:i]
 
-        if RE_EXTERNAL_CALL.search(body) and not RE_GUARD.search(body):
+        check_zone = attrs + body[:200]
+        if RE_EXTERNAL_CALL.search(body) and not RE_GUARD.search(body) and not auth_pattern.search(check_zone):
             func_names_with_calls.append((fname, m.start()))
 
     # If 2+ unguarded public functions have external calls → potential cross-function reentrancy

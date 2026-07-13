@@ -122,7 +122,7 @@ def _unsafe_pow(file_ctx, content, issues):
 
 def _raw_call_unchecked(file_ctx, content, issues):
     """VYP-CRIT-002: raw_call return value not checked."""
-    pattern = re.compile(r'(?<!success\s*[:=]\s*)raw_call\s*\([^)]+\)\s*\n', re.MULTILINE)
+    pattern = re.compile(r'^[ \t]*raw_call\s*\([^)]+\)\s*$', re.MULTILINE)
     for m in pattern.finditer(content):
         # Check if result is captured
         surrounding = content[max(0,m.start()-10):m.end()+10]
@@ -166,7 +166,7 @@ def _old_vyper_version(file_ctx, content, issues):
         issues.append(Issue(
             id="VYP-INFO-001",
             title=f"Outdated Vyper Version: `{ver}` — Known Security Bugs",
-            severity=Severity.HIGH, confidence=Confidence.HIGH,
+            severity=Severity.INFO, confidence=Confidence.HIGH,
             file=file_ctx.relative_path, line=line,
             snippet=file_ctx.get_snippet(line, context=1),
             description=(
