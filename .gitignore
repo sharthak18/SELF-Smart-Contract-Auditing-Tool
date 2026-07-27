@@ -64,3 +64,18 @@ yarn.lock
 # Foundry build artifacts
 out/
 cache/
+
+# Local generated PoC harnesses
+poc/
+
+# Editor / agent state
+.puku/
+.puku-cli/
+.codex/
+.agents/
+
+# Hypothesis fuzz database
+.hypothesis/
+
+# Test output dirs
+*-audit-report.*

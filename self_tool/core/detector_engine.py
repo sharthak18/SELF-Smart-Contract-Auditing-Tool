@@ -14,6 +14,8 @@ from self_tool.core.builtin_reviewer import validate_review_profiles
 from self_tool.core.issue import Issue, Severity
 from self_tool.core.scanner import FileContext
 from self_tool.core.protocol_context import ProtocolContext, EMPTY_CONTEXT
+from self_tool.core.project import ProjectContext
+from self_tool.core.versions import RULE_VERSION
 
 
 @dataclass(frozen=True)
@@ -101,6 +103,112 @@ class DetectorEngine:
             i.line,
         ))
         return sorted_issues
+
+    def run_project(
+        self,
+        files: List[FileContext],
+        protocol_ctx: Optional[ProtocolContext] = None,
+        apply_suppressions: bool = False,
+    ) -> List[Issue]:
+        """Run per-file detectors and project-level detectors.
+
+        Per-file detectors continue to see only their own ``FileContext``.
+        Project-level detectors (under ``self_tool.detectors.project``)
+        receive a ``ProjectContext`` and may emit findings that span
+        multiple files.
+        """
+        base_issues = self.run(files, protocol_ctx=protocol_ctx)
+        # Mark per-file findings with the rule version so suppression
+        # records distinguish runs across tool versions.
+        for issue in base_issues:
+            if not issue.rule_version:
+                issue.rule_version = RULE_VERSION
+
+        try:
+            project_ctx = ProjectContext.build(
+                files=files,
+                framework=self._framework_for(files, protocol_ctx),
+                knowledge_snapshot={},
+            )
+        except Exception as exc:
+            self.diagnostics.append(DetectorDiagnostic(
+                phase="graph", detector="project_graph",
+                message=f"{type(exc).__name__}: {exc}",
+            ))
+            return base_issues
+
+        for detector in self._project_detectors():
+            try:
+                issues = detector.detect_project(project_ctx)
+                for issue in (issues or []):
+                    if self._passes_filter(issue):
+                        if not issue.project_fingerprint:
+                            issue.project_fingerprint = project_ctx.project_fingerprint
+                        if not issue.rule_version:
+                            issue.rule_version = RULE_VERSION
+                        self._apply_context_suppression(issue, protocol_ctx or EMPTY_CONTEXT)
+                        base_issues.append(issue)
+            except Exception as exc:
+                self.diagnostics.append(DetectorDiagnostic(
+                    phase="project-runtime",
+                    detector=detector.__name__,
+                    message=f"{type(exc).__name__}: {exc}",
+                ))
+
+        if apply_suppressions:
+            self._apply_feedback_suppressions(base_issues, project_ctx.project_fingerprint)
+
+        return sorted(
+            base_issues,
+            key=lambda i: (
+                i.suppressed,
+                Severity.sort_key(i),
+                i.file,
+                i.line,
+            ),
+        )
+
+    def _framework_for(
+        self,
+        files: List[FileContext],
+        protocol_ctx: Optional[ProtocolContext],
+    ):
+        from self_tool.core.scanner import detect_framework, FrameworkInfo
+
+        if not files:
+            return FrameworkInfo("unknown", "", [])
+        root = str(Path(files[0].path).parent)
+        framework = detect_framework(root)
+        if framework.name == "unknown" and protocol_ctx is not None:
+            framework = FrameworkInfo(
+                name=protocol_ctx.protocol_type,
+                root=framework.root or root,
+                src_dirs=framework.src_dirs or [root],
+            )
+        return framework
+
+    def _apply_feedback_suppressions(self, issues: List[Issue], project_fingerprint: str) -> None:
+        """Apply the local feedback suppression overlay."""
+        try:
+            from self_tool.feedback.service import apply_suppressions
+            apply_suppressions(issues, project_fingerprint=project_fingerprint)
+        except Exception as exc:
+            self.diagnostics.append(DetectorDiagnostic(
+                phase="feedback",
+                detector="apply_suppressions",
+                message=f"{type(exc).__name__}: {exc}",
+            ))
+
+    def _project_detectors(self):
+        try:
+            from self_tool.detectors.project import discover_project_detectors
+            return list(discover_project_detectors())
+        except Exception as exc:
+            self.diagnostics.append(DetectorDiagnostic(
+                phase="project-import", detector="project_detectors",
+                message=f"{type(exc).__name__}: {exc}",
+            ))
+            return []
 
     def _apply_context_suppression(self, issue: Issue, ctx: ProtocolContext):
         """

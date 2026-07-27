@@ -48,6 +48,7 @@ def generate_report(
     include_info: bool = True,
     protocol_ctx: Optional[ProtocolContext] = None,
     show_suppressed: bool = False,
+    fuzz_summary: Optional[Dict[str, List[Dict]]] = None,
 ) -> str:
     """Generate the full Markdown audit report and write it to output_path."""
     project_name = Path(target).resolve().name or "Unknown Project"
@@ -113,6 +114,38 @@ def generate_report(
 | 🟢 Low | **{sev_counts[Severity.LOW]}** | {sum(1 for i in suppressed_issues if i.severity == Severity.LOW)} |
 | ℹ️ Info | **{sev_counts[Severity.INFO]}** | {sum(1 for i in suppressed_issues if i.severity == Severity.INFO)} |
 | **Total** | **{total_active}** | {len(suppressed_issues)} |
+""")
+
+    # ── Fuzzing summary (if --fuzz ran) ───────────────────────────────────────
+    if fuzz_summary:
+        rows = []
+        for mode, items in fuzz_summary.items():
+            for it in items:
+                fnd = it["findings"]
+                err = it.get("errors", 0) or 0
+                if mode == "stateless":
+                    rows.append((mode, it["file"], str(it["runs"]), "—",
+                                 fnd, err))
+                else:
+                    rows.append((mode, it["file"], str(it["sequences"]),
+                                 str(it.get("steps", 0)), fnd, err))
+        rows_md = "\n".join(
+            f"| {m} | `{f}` | {runs} | {steps} | {fnd} | {err} |"
+            for (m, f, runs, steps, fnd, err) in rows
+        )
+        sections.append(f"""---
+
+## 🎲 Fuzzing
+
+Hypothesis-driven property-based fuzzing (stateless) and sequence-based
+stateful fuzzing (mock EVM) were run against the Solidity files.
+
+| Mode | File | Runs / Sequences | Steps | Findings | Errors |
+|------|------|------------------|-------|----------|--------|
+{rows_md}
+
+> Fuzz findings are merged into the active findings above; their `id` is
+> prefixed with `fuzz-` for traceability.
 """)
 
     if total_active == 0:
@@ -255,10 +288,17 @@ def _format_protocol_context(ctx: ProtocolContext, suppressed: List[Issue]) -> s
 """
 
 
+def _md_cell(text: str) -> str:
+    """Escape text so it does not break a Markdown table cell."""
+    if text is None:
+        return ""
+    return text.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
 def _format_suppressed_section(issues: List[Issue]) -> str:
     """Format suppressed findings as a collapsed reference section."""
     rows = [
-        f"| `{i.id}` | {SEVERITY_BADGE[i.severity]} | {i.title[:60]} | {i.suppression_reason[:80]} |"
+        f"| `{i.id}` | {SEVERITY_BADGE[i.severity]} | {_md_cell(i.title[:60])} | {_md_cell(i.suppression_reason[:80])} |"
         for i in issues
     ]
     return f"""---

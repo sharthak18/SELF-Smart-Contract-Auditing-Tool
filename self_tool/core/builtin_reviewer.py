@@ -53,6 +53,9 @@ REVIEW_PROFILES: Dict[str, ReviewProfile] = {
     "STAKE-CRIT-002": _profile("Reward claim reentrancy", "Prove claimable state is cleared before token or native-value transfer.", "Re-enter claim from the reward token hook or native receive function."),
     "VYP-CRIT-001": _profile("Vyper reentrancy locking", "Verify compiler version and lock coverage across every external state-changing path sharing state.", "Re-enter through raw_call and token hooks across sibling functions."),
     "VYP-CRIT-002": _profile("Vyper raw_call result", "Prove raw_call failure and returned data are checked before state changes.", "Use a reverting and false-returning target and assert atomic failure."),
+    "VYP-CRIT-003": _profile("Vyper selfdestruct", "Prove the destruction authority is the intended admin and the contract has nothing left to lose on L2 chains.", "Deploy a test instance and attempt to selfdestruct from a non-owner EOA."),
+    "VYP-CRIT-004": _profile("Vyper privileged function auth", "Prove every privileged mutation asserts msg.sender against the canonical admin role, not a stale role variable.", "Forge an admin change and confirm the privileged function refuses."),
+    "VYP-CRIT-005": _profile("Vyper ETH-transfer reentrancy", "Prove every raw_call/send with value carries the @nonreentrant lock and that state writes follow the call.", "Trace a fake callback that re-enters the function and assert the lock rejects."),
     "HUFF-HIGH-001": _profile("Huff control flow", "Trace every MAIN dispatch branch to STOP, RETURN, REVERT, or SELFDESTRUCT.", "Fuzz selectors and calldata lengths and reject unintended fallthrough."),
     "HUFF-HIGH-002": _profile("Huff call value", "Prove nonpayable dispatch paths reject CALLVALUE before state changes.", "Send nonzero value to every selector and assert only intended payable paths accept it."),
     "MOV-HIGH-001": _profile("Move capability authorization", "Trace capability creation, storage, borrowing, and holder validation.", "Attempt capability use from copied, wrong-holder, and absent-resource contexts."),
@@ -91,8 +94,17 @@ REVIEW_PROFILES: Dict[str, ReviewProfile] = {
     "STAKE-HIGH-003": _profile("Shared staking/reward token", "Separate principal from rewards when both use the same token balance.", "Stake, fund rewards, claim, and withdraw in adversarial order."),
     "VYP-HIGH-001": _profile("Vyper slice bounds", "Prove offset and length remain within source data for every caller-controlled combination.", "Fuzz zero, exact-end, and out-of-range slice parameters."),
     "VYP-HIGH-002": _profile("Vyper exponentiation bounds", "Bound base and exponent and account for compiler-version behavior.", "Fuzz maximum base and exponent values around overflow thresholds."),
+    "VYP-HIGH-003": _profile("Vyper send failure handling", "Prove every send captures and asserts its bool return and that recipients with non-trivial fallback are addressed via raw_call.", "Mock a contract recipient that consumes >2300 gas and assert the failure path."),
+    "VYP-HIGH-004": _profile("Vyper 0.2.x visibility", "Prove every 0.2.x top-level def has been audited as @internal where appropriate.", "Compile a manifest of every external entry point and confirm it matches the intended API."),
+    "VYP-HIGH-005": _profile("Vyper divide-by-zero", "Prove every denominator reachable from user input is asserted >0 before division.", "Run the function at the boundary (empty pool, fully drained) and assert no arithmetic revert."),
+    "VYP-HIGH-006": _profile("Vyper weak randomness", "Prove no winner/lottery/raffle outcome depends on block.prevrandao/timestamp/number.", "Simulate a validator choosing a favorable prevrandao and assert the outcome is unchanged."),
     "HUFF-MED-001": _profile("Huff calldata dispatch", "Prove calldata shorter than four bytes cannot select or fall through to privileged logic.", "Execute calldata lengths zero through four for every dispatcher branch."),
     "SOL-RUST-006": _profile("Solana account reload", "Prove account data read after CPI is reloaded before authorization or accounting use.", "Mutate the account in CPI and verify subsequent logic observes the new value."),
+    "SOL-RUST-007": _profile("Solana account aliasing", "Prove every pair of mutable role accounts that must be distinct is constrained by key inequality or equivalent logic.", "Pass the same account for every pair of mutable role accounts and require rejection."),
+    "SOL-RUST-008": _profile("Anchor relationship constraints", "Resolve every has_one, owner, address, and custom key constraint to an account field and prove the intended relationship is enforced.", "Substitute each related account independently and require the failing constraint to identify the expected field."),
+    "SOL-RUST-009": _profile("Anchor account lifecycle", "Prove init, init_if_needed, realloc, and close constraints specify the intended payer, size, zeroing, authority, and reinitialization protection.", "Exercise initialization, repeat initialization, growth, shrink, and close/reopen sequences with attacker-controlled payers and recipients."),
+    "SOL-RUST-010": _profile("Solana token program identity", "Prove every token and mint account is bound to the intended SPL Token or Token-2022 program, with explicit support for interfaces where both are accepted.", "Substitute Token-2022 for SPL Token and vice versa, including transfer-hook and extension-bearing accounts, and require rejection when unsupported."),
+    "SOL-RUST-011": _profile("Solana sysvar identity", "Prove Clock, Rent, Instructions, EpochSchedule, and system program inputs use typed accounts or canonical addresses.", "Pass a same-layout attacker-owned account for each raw sysvar/system-program field and require rejection."),
     "AMM-MED-001": _profile("AMM square-root precision", "Quantify sqrt rounding direction and prove it cannot overmint shares or undercharge users.", "Differential-test perfect squares and adjacent values."),
     "LEND-MED-001": _profile("Borrow concentration", "Derive per-asset and global exposure limits under oracle and liquidity stress.", "Borrow to configured limits across correlated accounts and assets."),
     "SOL-MED-001": _profile("Privileged control", "Enumerate owner powers, delays, multisig thresholds, and maximum immediate fund impact.", "Exercise each privileged action from compromised and transferred-role scenarios."),
@@ -119,6 +131,14 @@ REVIEW_PROFILES: Dict[str, ReviewProfile] = {
     "SOL-INFO-002": _profile("Upgrade discipline", "Document proxy type, admin model, initializer sequence, storage layout, and upgrade authorization.", "Upgrade through the production path and assert state and authorization invariants."),
     "SOL-INFO-003": _profile("External dependency trust", "Enumerate dependency addresses, upgradeability, failure modes, and emergency behavior.", "Simulate dependency revert, pause, malicious return data, and address change."),
     "VYP-INFO-001": _profile("Vyper compiler security", "Map the pinned Vyper version to advisories and verify affected constructs.", "Recompile with a maintained Vyper release and rerun security regression tests."),
+    "VYP-INFO-002": _profile("Vyper selfdestruct legacy", "Confirm the contract has a planned upgrade path before relying on selfdestruct as an emergency brake.", "Simulate the post-EIP-6780 branch and assert funds are recoverable."),
+    "VYP-INFO-003": _profile("Vyper raw_call explicitness", "Verify every raw_call passes revert_on_failure explicitly.", "Lint all raw_call sites for the keyword argument."),
+    "VYP-MED-002": _profile("Vyper raw_call default", "Prove the call without captured return still reverts or is followed by an explicit assert.", "Add a fuzz target returning false and confirm the path halts."),
+    "VYP-MED-003": _profile("Vyper create_from_blueprint post-cancun", "Prove blueprint deployment still satisfies intended invariants after Cancun.", "Run a Cancun fork test exercising the constructor vs runtime paths."),
+    "VYP-MED-004": _profile("Vyper ERC20 raw_call success", "Prove each token interaction captures the bool and asserts it.", "Mock a fee-on-transfer and blacklistable token and assert accounting holds."),
+    "VYP-MED-005": _profile("Vyper unbounded loop", "Prove every range bound is bounded by a user-independent maximum or paginated.", "Drive the loop parameter to a value just below the block gas limit and assert graceful behavior."),
+    "VYP-LOW-001": _profile("Vyper public state reentrancy surface", "Prove every cross-contract callback path locks the read of the sensitive getter.", "Trace a simulated ERC-777 hook and assert stale values are not consumed."),
+    "VYP-LOW-002": _profile("Vyper timestamp dependence", "Prove time-gated logic tolerates validator timestamp drift on the order of seconds.", "Shift the clock by ±15s and confirm window-based paths do not misfire."),
     "SOL-CRIT-011": _profile("Transient storage", "Prove tstore is cleared before exiting the transaction.", "Use leftover transient data in a subsequent cross-contract call within the same tx."),
     "SOL-CRIT-012": _profile("CREATE2 reentrancy", "Verify the metamorphic contract hash before callback interaction.", "Deploy, destruct, and redeploy malicious bytecode at the same CREATE2 address."),
     "SOL-CRIT-014": _profile("Signature malleability", "Prove the 's' value of ECDSA signature is validated against the upper bound.", "Submit a morphed signature `(v', r, -s mod n)` to replay a transaction."),
@@ -132,6 +152,38 @@ REVIEW_PROFILES: Dict[str, ReviewProfile] = {
     "SOL-LOW-008": _profile("Missing receive ETH", "Add receive() when handling WETH unwrapping.", "Unwrap WETH to native ETH and watch the fallback fail."),
     "SOL-LOW-009": _profile("Payable ignores value", "Ensure msg.value is processed or remove the payable modifier.", "Send ETH to the contract and observe it locked forever."),
     "SOL-MED-014": _profile("Permit deadline", "Validate block.timestamp against the permit deadline.", "Submit an old permit signature long after its intended expiration."),
+
+    # ── Project-level (cross-contract) detectors ───────────────────────────
+    "PROJECT-ACCESS-001": _profile(
+        "Cross-contract access control",
+        "Resolve every inherited or implemented function across files and prove modifiers or guards apply to the resolved definition, not only the local contract.",
+        "Substitute each super-class implementation across its call sites and assert privilege gates still apply.",
+    ),
+    "PROJECT-PROXY-001": _profile(
+        "Proxy / delegatecall graph safety",
+        "Trace every delegatecall edge to its implementation and prove storage layout, initializer control, and upgrade authorization are governed.",
+        "Upgrade the implementation, redeploy with differing storage, and assert slot layout survives and only authorized callers can call the proxy admin.",
+    ),
+    "PROJECT-REENTRANCY-001": _profile(
+        "Multi-contract reentrancy",
+        "Walk every cross-contract call edge from a function that mutates state and confirm checks-effects-interactions ordering is preserved across the hop.",
+        "Re-enter each external callee from a callback contract and assert the originating function's invariant cannot be drained.",
+    ),
+    "PROJECT-AUTH-001": _profile(
+        "Authorization-to-state write coverage",
+        "Match every state-mutating function to a guard edge in the graph and prove guards are not bypassed by helper paths.",
+        "Invoke the function from unauthorized EOAs and contracts, including through internal helpers, and require failure.",
+    ),
+    "PROJECT-ORACLE-001": _profile(
+        "Oracle and dependency trust boundaries",
+        "Trace every external dependency read to its source and confirm aggregator / freshness / fallback coverage.",
+        "Manipulate the dependency within its adjustment bounds and assert dependent protocol actions are unchanged.",
+    ),
+    "PROJECT-UNRESOLVED-001": _profile(
+        "Unresolved graph edge disclosure",
+        "Enumerate every unresolved import, inheritance, or call edge and document why static resolution was insufficient.",
+        "Manually complete the resolution for a sample of unresolved edges and confirm the resulting call path is consistent with the documented intent.",
+    ),
 }
 
 
@@ -173,3 +225,67 @@ def review_issues(issues: List[Issue]) -> List[Issue]:
     for issue in issues:
         review_issue(issue)
     return issues
+
+
+# ── Exploit-corpus auto-registration ─────────────────────────────────────────
+# Every detector derived from the exploit corpus must have a deterministic
+# review profile. We generate one from the root_cause_class so adding a new
+# exploit to exploits.json gives you a properly-structured review for free.
+
+_CORPUS_LENS = {
+    "missing-signature-verification": "Signature binding",
+    "centralization-of-power":         "Validator / admin decentralization",
+    "logic-bypass":                    "Message / proof strict equality",
+    "weak-key-management":             "Signer quorum and custody",
+    "proof-verification-bypass":       "Merkle proof path validation",
+    "reentrancy":                      "Checks-effects-interactions ordering",
+    "read-only-reentrancy":            "View function reentrancy during state mutation",
+    "governance-via-flashloan":        "Governance snapshot / timelock enforcement",
+    "oracle-manipulation":             "Oracle source and window robustness",
+    "iron-bank-credit-manipulation":   "Credit / borrow limits per call",
+    "reentrancy-via-ERC777":           "ERC777 token-hook reentrancy",
+    "balancer-staking-integration":    "Balancer supply / share-rate invariants",
+    "unprotected-init":                "Initializer authorization",
+    "auth-bypass":                     "Cross-chain authentication continuity",
+    "twap-time-window-bypass":         "TWAP window size and liquidity",
+    "fee-on-transfer-misaccounting":   "FoT / rebasing token balance deltas",
+    "logic-bug-arithmetic":            "Arithmetic scale and unit factors",
+    "flashloan-liquidation-arbitrage": "Self-liquidation prevention",
+    "front-running":                   "Commit-reveal and minimum delay",
+    "signature-replay":                "Signature nonce / domain binding",
+    "frontrun-sandwich":               "Slippage and minimum output enforcement",
+    "unprotected-selfdestruct":        "selfdestruct authorization",
+    "vyper-storage-overwrite":         "Vyper compiler version pinning",
+}
+
+
+def _register_exploit_corpus_profiles() -> None:
+    """Auto-generate review profiles for every entry in the exploit corpus.
+
+    Called at import time so that any catalog lookup that scans REVIEW_PROFILES
+    finds a profile for exploit-driven detector IDs.
+    """
+    try:
+        from self_tool.knowledge.exploit_corpus import load_exploit_corpus
+    except Exception:
+        return
+    for exp in load_exploit_corpus().values():
+        if exp.detector_id in REVIEW_PROFILES:
+            continue
+        lens = _CORPUS_LENS.get(
+            exp.root_cause_class,
+            f"Exploit-class {exp.root_cause_class}",
+        )
+        proof = (
+            f"Prove the {exp.root_cause_class} defense from the {exp.name} "
+            f"writeup is present (CWE {', '.join(exp.cwe) or 'n/a'}, "
+            f"SWC {', '.join(exp.swc) or 'n/a'})."
+        )
+        test = (
+            f"Replicate the {exp.name} exploit path: {exp.title}. "
+            "Assert the defensive pattern from the post-mortem holds."
+        )
+        REVIEW_PROFILES[exp.detector_id] = _profile(lens, proof, test)
+
+
+_register_exploit_corpus_profiles()

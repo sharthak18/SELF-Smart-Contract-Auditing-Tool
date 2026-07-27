@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "self-auditor"
-version = "2.2.0"
+version = "2.3.0"
 description = "Local multi-language smart contract security auditing and pre-audit analysis."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -12,24 +12,44 @@ license = {text = "MIT"}
 authors = [
   {name = "Self Auditor", email = "audit@self.tool"},
 ]
-keywords = ["smart-contract", "security", "audit", "solidity", "web3", "blockchain"]
+keywords = ["smart-contract", "security", "audit", "solidity", "vyper", "rust", "anchor", "web3", "blockchain"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Topic :: Security",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
   "click>=8.0",
   "rich>=13.0",
+  "hypothesis>=6.0,<7",
 ]
 
+[project.urls]
+Homepage = "https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool"
+Repository = "https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool"
+Issues = "https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool/issues"
+Changelog = "https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool/blob/main/CHANGELOG.md"
+Security = "https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool/blob/main/SECURITY.md"
+
 [project.scripts]
-self = "self_tool.self:cli"
+self = "self_tool.self:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["self_tool*"]
 
 [tool.setuptools.package-data]
-self_tool = ["knowledge/*.json"]
+self_tool = [
+  "knowledge/*.json",
+  "knowledge/exploits/*.json",
+  "knowledge/exploits/**/*.json",
+]

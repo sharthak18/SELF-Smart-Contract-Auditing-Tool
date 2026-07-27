@@ -16,7 +16,11 @@ Usage:
 import sys
 import json
 import time
+import os
+from collections import Counter
 from pathlib import Path
+
+sep = os.sep
 
 import click
 from rich.console import Console
@@ -38,6 +42,10 @@ from self_tool.core.knowledge_base import load_security_knowledge, knowledge_cov
 from self_tool.core.builtin_reviewer import REVIEW_PROFILES, review_issues
 from self_tool.core.xray import generate_xray_report
 from self_tool.version import __version__
+
+# Default seed for local fuzzing when the user does not override it.
+# Anything deterministic and conspicuous so reseeding is easy to spot.
+DEFAULT_FUZZ_SEED = 0xC0FFEE
 
 console = Console()
 
@@ -113,10 +121,29 @@ def print_banner():
               help="Generate a deterministic pre-audit attack-surface report")
 @click.option("--xray-output", default=None,
               help="X-ray report path (default: self-xray.md beside the target)")
+@click.option("--poc", "generate_poc", is_flag=True, default=False,
+              help="After scanning, emit Foundry PoCs for every exploit-corpus finding")
+@click.option("--poc-dir", default="poc",
+              help="Output directory for --poc generated files (default: poc/)")
+@click.option("--fuzz", "run_fuzz", is_flag=True, default=False,
+              help="After scanning, run property-based fuzzers and merge findings into the report")
+@click.option("--fuzz-mode", default="both",
+              type=click.Choice(["stateless", "stateful", "both"], case_sensitive=False),
+              help="Fuzzing mode to run (default: both)")
+@click.option("--fuzz-iters", default=32, show_default=True,
+              help="Max hypothesis examples per (target, invariant) for stateless fuzzing")
+@click.option("--fuzz-seqs", default=32, show_default=True,
+              help="Number of action sequences to generate for stateful fuzzing")
+@click.option("--fuzz-seq-len", default=6, show_default=True,
+              help="Maximum length of each stateful action sequence")
+@click.option("--fuzz-seed", default=None, type=int,
+              help="Seed for fuzzing RNG so runs are reproducible")
 def cli(target, severity, output, lang, no_info, output_json, list_detectors,
         knowledge_status, quiet,
         no_docs, show_suppressed,
-        trust_doc_suppressions, xray, xray_output):
+        trust_doc_suppressions, xray, xray_output,
+        generate_poc, poc_dir,
+        run_fuzz, fuzz_mode, fuzz_iters, fuzz_seqs, fuzz_seq_len, fuzz_seed):
     """
     \b
     SELF — Smart Contract Auditing Tool
@@ -132,7 +159,7 @@ def cli(target, severity, output, lang, no_info, output_json, list_detectors,
     if not quiet:
         print_banner()
 
-    # ── List detectors mode ──────────────────────────────────────────────────
+    # ── Subcommand dispatch (preserves `self .` usage) ──────────────────────
     if list_detectors:
         _show_detector_list()
         return
@@ -251,6 +278,78 @@ def cli(target, severity, output, lang, no_info, output_json, list_detectors,
     ]
     suppressed_count = sum(1 for i in issues if i.suppressed)
 
+    # ── Optional fuzzing pass ────────────────────────────────────────────────
+    fuzz_summary: dict = {}
+    if run_fuzz:
+        from self_tool.fuzzing import fuzz_stateless, fuzz_stateful
+        from self_tool.core.xray import analyze_entry_points
+        from self_tool.knowledge.exploit_corpus import load_exploit_corpus
+        fuzz_findings: list = []
+        sol_files = [f for f in files if f.language == "solidity"]
+        if not sol_files:
+            console.print("[yellow]No Solidity files to fuzz[/yellow]")
+        # Build xray entry points once for all files; deterministic.
+        xray_entries: list = []
+        if sol_files:
+            try:
+                xray_entries, _ = analyze_entry_points(sol_files)
+            except Exception:
+                xray_entries = []
+        corpus_invariants: list = []
+        try:
+            for ex in load_exploit_corpus():
+                for inv in getattr(ex, "invariant_violations", []) or []:
+                    if inv and inv not in corpus_invariants:
+                        corpus_invariants.append(inv)
+        except Exception:
+            corpus_invariants = []
+        for fc in sol_files:
+            if fuzz_mode in ("stateless", "both"):
+                r = fuzz_stateless(fc, max_examples=fuzz_iters, seed=fuzz_seed)
+                fuzz_findings.extend(r.findings)
+                fuzz_summary.setdefault("stateless", []).append({
+                    "file": fc.relative_path, "runs": r.runs,
+                    "findings": len(r.findings), "errors": r.errors,
+                    "seed": r.seed,
+                })
+            if fuzz_mode in ("stateful", "both"):
+                r = fuzz_stateful(fc, max_sequences=fuzz_seqs,
+                                  max_length=fuzz_seq_len,
+                                  seed=fuzz_seed if fuzz_seed is not None else DEFAULT_FUZZ_SEED,
+                                  entry_points=xray_entries,
+                                  corpus_invariants=corpus_invariants)
+                fuzz_findings.extend(r.findings)
+                fuzz_summary.setdefault("stateful", []).append({
+                    "file": fc.relative_path, "sequences": r.sequences,
+                    "steps": r.total_steps, "findings": len(r.findings),
+                    "shrunk": len(r.shrunk_traces), "errors": r.errors,
+                    "seed": r.seed,
+                    "xray_targets": len(xray_entries),
+                    "corpus_invariants": len(corpus_invariants),
+                })
+        # Merge fuzz findings + run review pass on them
+        if fuzz_findings:
+            # Tag with fuzz- prefix for traceability in the report
+            for f in fuzz_findings:
+                if not f.id.startswith("fuzz-"):
+                    f.id = f"fuzz-{f.id}"
+            try:
+                review_issues(fuzz_findings)
+            except ValueError:
+                pass
+            visible_issues = visible_issues + fuzz_findings
+            severity_counts = Counter(f.severity for f in fuzz_findings)
+            severity_summary = ", ".join(
+                f"{severity}={severity_counts[severity]}"
+                for severity in Severity.ORDER
+                if severity_counts[severity]
+            )
+            console.print(f"[bold green]🎲 Fuzz results:[/bold green] "
+                          f"[cyan]{len(fuzz_findings)}[/cyan] new finding(s) "
+                          f"({severity_summary})")
+        else:
+            console.print("[bold green]🎲 Fuzz results:[/bold green] no new findings")
+
     # ── Print summary to terminal ─────────────────────────────────────────────
     _print_terminal_summary(files, framework, visible_issues, elapsed, target_path,
                             suppressed_count=suppressed_count)
@@ -271,6 +370,7 @@ def cli(target, severity, output, lang, no_info, output_json, list_detectors,
         include_info=not no_info,
         protocol_ctx=protocol_ctx,
         show_suppressed=show_suppressed,
+        fuzz_summary=fuzz_summary or None,
     )
     console.print(f"\n[bold green]📄 Report saved:[/bold green] [cyan]{report_path}[/cyan]")
     if suppressed_count:
@@ -301,6 +401,21 @@ def cli(target, severity, output, lang, no_info, output_json, list_detectors,
             output_path=xray_path,
         )
         console.print(f"[bold green]X-ray saved:[/bold green] [cyan]{xray_path}[/cyan]")
+
+    # ── Optional PoC generation ──────────────────────────────────────────────
+    if generate_poc:
+        from self_tool.knowledge.poc_generator import generate_for_issues
+        base = target_path if target_path.is_dir() else target_path.parent
+        out_dir = (base / poc_dir).resolve()
+        if not (str(out_dir).startswith(str(base.resolve()) + sep)
+                and ".." not in Path(poc_dir).parts):
+            console.print(
+                f"[bold red]❌ Error:[/bold red] --poc-dir must be a relative path "
+                f"under the scan target (got `{poc_dir}`)"
+            )
+            sys.exit(4)
+        written = generate_for_issues(visible_issues, out_dir)
+        console.print(f"[bold green]⚔  PoCs generated:[/bold green] [cyan]{len(written)}[/cyan] → {out_dir}")
 
     # ── Exit code based on severity ───────────────────────────────────────────
     from self_tool.core.issue import Severity as S
@@ -481,5 +596,29 @@ def _show_knowledge_status():
     console.print(source_table)
 
 
+# Subcommands routed before the normal scan dispatch. Each entry maps the
+# command name to the (module, attribute) pair that hosts its Click command.
+_SUBCOMMANDS = {
+    "update": ("self_tool.cli.intelligence", "update"),
+    "intelligence": ("self_tool.cli.intelligence", "intelligence"),
+    "feedback": ("self_tool.cli.feedback", "feedback"),
+    "calibrate": ("self_tool.cli.calibration", "calibrate"),
+    "graph": ("self_tool.cli.graph_cmd", "graph"),
+}
+
+
+def main() -> None:
+    """Console entry point: dispatch subcommands or fall through to ``cli``."""
+    import importlib
+
+    if len(sys.argv) > 1 and sys.argv[1] in _SUBCOMMANDS:
+        name = sys.argv[1]
+        spec = _SUBCOMMANDS[name]
+        command = getattr(importlib.import_module(spec[0]), spec[1])
+        command.main(args=sys.argv[2:], standalone_mode=True)
+        return
+    cli.main(args=sys.argv[1:], standalone_mode=True)
+
+
 if __name__ == "__main__":
-    cli()
+    main()

@@ -2,25 +2,87 @@ name: CI
 
 on:
   push:
+    branches: [main, master]
   pull_request:
+    branches: [main, master]
 
 permissions:
   contents: read
 
 jobs:
   test:
+    name: tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.8", "3.12"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: python -m pip install --upgrade pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install hypothesis
+      - name: Compile
+        run: python -m compileall -q self_tool
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -p "test_*.py"
+      - name: Confirm catalog ↔ profile parity
+        run: |
+          python -c "from self_tool.core.builtin_reviewer import validate_review_profiles; from self_tool.core.detector_catalog import load_detector_catalog; validate_review_profiles(r.id for r in load_detector_catalog()); print('parity OK')"
+      - name: Confirm offline guard
+        run: python -m unittest tests.test_offline_guard -v
+      - name: Smoke CLI
+        run: |
+          self --version
+          self --list-detectors --quiet
+          self --knowledge-status --quiet
+      - name: Calibration smoke
+        run: |
+          python -c "from self_tool.calibration.runner import run_calibration; from pathlib import Path; m = run_calibration(Path('tests/fixtures/calibration')); print(f'calibration OK across {len(m)} detectors')"
+
+  imports:
+    name: import sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: python -m pip install -e .
       - run: python -m compileall -q self_tool
-      - run: python -m unittest discover -s tests -p "test_*.py" -v
-      - run: self --version
-      - run: self --knowledge-status --quiet
+      - name: Smoke import every public surface
+        run: |
+          python -c "
+          import importlib
+          for name in [
+              'self_tool.cli.graph_cmd',
+              'self_tool.cli.feedback',
+              'self_tool.cli.intelligence',
+              'self_tool.cli.calibration',
+              'self_tool.detectors.project',
+              'self_tool.feedback.store',
+              'self_tool.feedback.service',
+              'self_tool.calibration.runner',
+              'self_tool.calibration.metrics',
+              'self_tool.intelligence.cache',
+              'self_tool.intelligence.manifest',
+              'self_tool.intelligence.validator',
+              'self_tool.intelligence.fetcher',
+              'self_tool.intelligence.install',
+              'self_tool.graph.builder',
+              'self_tool.graph.solidity',
+              'self_tool.graph.resolution',
+              'self_tool.graph.serialization',
+              'self_tool.core.audit_log',
+              'self_tool.core.fingerprints',
+              'self_tool.core.versions',
+              'self_tool.core.project',
+          ]:
+              importlib.import_module(name)
+          print('imports OK')
+          "

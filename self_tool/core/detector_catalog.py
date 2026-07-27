@@ -45,6 +45,22 @@ def _text(node: Optional[ast.AST]) -> Optional[str]:
     return None
 
 
+def _text_literals(node: Optional[ast.AST]) -> List[str]:
+    """Walk an expression and collect every string literal it contains.
+
+    Handles conditional IDs like ``id="X" if cond else "Y"`` by registering
+    both possible IDs so review profiles can be matched regardless of which
+    branch the runtime emits.
+    """
+    found: List[str] = []
+    if node is None:
+        return found
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+            found.append(child.value)
+    return found
+
+
 def _severity(detector_id: str, node: Optional[ast.AST]) -> str:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value.upper()
@@ -78,18 +94,42 @@ def load_detector_catalog(detectors_root: Optional[Path] = None) -> List[Detecto
             if not isinstance(node, ast.Call) or _call_name(node) not in {"Issue", "as_issues"}:
                 continue
             keywords = _keywords(node)
-            detector_id = _text(keywords.get("id"))
-            if not detector_id:
-                continue
-            title = _text(keywords.get("title")) or detector_id.replace("-", " ").title()
-            rules[detector_id] = DetectorMetadata(
-                id=detector_id,
-                language=language,
-                severity=_severity(detector_id, keywords.get("severity")),
-                title=title,
-                module=module,
-                line=node.lineno,
+            id_node = keywords.get("id")
+            # Collect every literal id candidate — supports ternary
+            # ``id="X" if cond else "Y"`` so review profiles for both
+            # branches are reachable.
+            candidates = _text_literals(id_node) or (
+                [_text(id_node)] if _text(id_node) else []
             )
+            if not candidates:
+                continue
+            title = _text(keywords.get("title")) or candidates[0].replace("-", " ").title()
+            severity = _severity(candidates[0], keywords.get("severity"))
+            for detector_id in candidates:
+                rules[detector_id] = DetectorMetadata(
+                    id=detector_id,
+                    language=language,
+                    severity=severity,
+                    title=title,
+                    module=module,
+                    line=node.lineno,
+                )
+
+    # ── Merge exploit-corpus rules (rules derived from real incidents) ───────
+    try:
+        from self_tool.knowledge.exploit_corpus import load_exploit_corpus
+        for exp in load_exploit_corpus().values():
+            rules[exp.detector_id] = DetectorMetadata(
+                id=exp.detector_id,
+                language="solidity",
+                severity=exp.severity,
+                title=exp.title,
+                module="self_tool.knowledge.exploit_corpus",
+                line=0,
+            )
+    except Exception:
+        # Corpus missing — fall back to detector-only catalog
+        pass
 
     severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
     return sorted(

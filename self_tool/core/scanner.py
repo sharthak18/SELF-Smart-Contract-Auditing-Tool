@@ -174,6 +174,20 @@ def discover_files(
     return files, framework
 
 
+def project_fingerprint_for(files: List[FileContext], framework: FrameworkInfo) -> str:
+    """Compute a stable fingerprint for ``files`` within ``framework``.
+
+    Imported here to keep the scanner module self-contained: callers
+    that only need a fingerprint (e.g. lightweight suppression) do not
+    need to import the graph package directly.
+    """
+    from self_tool.core.fingerprints import project_fingerprint
+    return project_fingerprint({
+        "framework": framework.name,
+        "files": sorted(f.relative_path for f in files),
+    })
+
+
 def _load_file(filepath: Path, root: Path, language: str) -> Optional[FileContext]:
     """Load a source file. Empty files are ignored; read failures propagate."""
     content = filepath.read_text(encoding="utf-8", errors="replace")
