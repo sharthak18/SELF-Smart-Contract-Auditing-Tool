@@ -10,7 +10,7 @@ from typing import List
 from self_tool.core.issue import Issue, Severity, Confidence
 from self_tool.core.scanner import FileContext
 from self_tool.parsers.vyper_parser import parse_vyper
-from __future__ import annotations
+
 
 
 # ──────────────────────────────────────────────────────────────────────────
