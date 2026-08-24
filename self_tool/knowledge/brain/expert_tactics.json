@@ -243,6 +243,29 @@
         "https://code4rena.com/reports/2024-05-bakerfi",
         "https://code4rena.com/reports/2025-01-next-generation"
       ]
+    },
+    {
+      "id": "TAC-CONTEST-BRIEF",
+      "source": "Code4rena / Sherlock contest README discipline",
+      "title": "Read the brief before the bytecode",
+      "lens": "documentation",
+      "applies_to": [
+        "solidity",
+        "lending",
+        "vault",
+        "bridge"
+      ],
+      "questions": [
+        "What did the sponsor list under Known Issues / Automated Findings?",
+        "Which files are in scope.txt versus out_of_scope.txt?",
+        "Which roles are documented as trusted, and is that trust actually enforced in code?",
+        "Did the sponsor accept first-depositor inflation, FoT-incompatibility, or oracle-operator risk?"
+      ],
+      "why": "Ten C4 replays with --no-docs on scope-only copies ignored the contest README. Wardens are scored against that brief; repeating a declared known issue is wasted work, and reporting on an out-of-scope mock is a false positive.",
+      "references": [
+        "https://docs.code4rena.com/roles/wardens/judging-criteria",
+        "https://code4rena.com/reports/2024-05-bakerfi"
+      ]
     }
   ]
 }

@@ -129,6 +129,11 @@ def understand(
         architecture_notes=notes,
         source_chars=len(combined),
         file_count=len(files),
+        known_issues=list(protocol_ctx.known_issues or []),
+        out_of_scope_paths=list(protocol_ctx.out_of_scope_files or []),
+        in_scope_paths=list(protocol_ctx.in_scope_files or []),
+        trusted_roles=list(protocol_ctx.trusted_roles or []),
+        accepted_playbooks=list(protocol_ctx.accepted_playbooks or []),
     )
 
 
@@ -305,6 +310,9 @@ def _facts(
         "uses_docs_multisig": bool(ctx.uses_multisig),
         "uses_docs_timelock": bool(ctx.uses_timelock),
         "uses_docs_reentrancy_guard": bool(ctx.uses_reentrancy_guard),
+        "docs_declare_known_issues": bool(ctx.known_issues),
+        "docs_declare_trusted_roles": bool(ctx.trusted_roles),
+        "docs_declare_out_of_scope": bool(ctx.out_of_scope_files),
         "donation_skips_health": _donation_skips_health(combined, types),
         "permissionless_market_register": _permissionless_market(combined, functions),
         "unauthenticated_callback": _unauthenticated_callback(functions, combined),

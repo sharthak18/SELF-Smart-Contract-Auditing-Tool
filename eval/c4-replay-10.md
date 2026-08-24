@@ -143,3 +143,61 @@ SELF_DATA_DIR=/tmp/self-c4-replay-data \
 # unit lock for the new facts
 python -m unittest tests.test_autonomous.ReplayFixTests
 ```
+
+## Follow-on 4: keep the contest brief in mind
+
+The scorecard above was **blind**: `run_autonomous_audit(..., no_docs=True)` on a `.sol`-only copy. That was the wrong question for “did SELF understand the README?”. Re-reading the ten full repos showed every contest publishes Known Issues / trusted roles / `scope.txt`, and the reasoner never saw them.
+
+Three stacked failures:
+
+1. **How the replay was run** — `no_docs=True` plus `/tmp/c4-eval/*-scope` (copied Solidity only). `ProtocolContext` was empty.
+2. **Where the wiring stopped** — `pipeline.py` short-circuits on `no_docs`; `doc_reader` did not open `README-sponsor.md` / `scope.txt` / `out_of_scope.txt`; `understand()` used docs only for type scoring; `reason()` never received the context.
+3. **Why it was designed that way** — docs were boolean posture flags (multisig / Chainlink / SafeERC20) for static-detector notes, not a contest-brief parser.
+
+### What the brain now keeps
+
+`DocReader` walks up from `contracts/` / `src/` and **scores** candidate roots (`scope.txt`, “known issue”, “trusted role”, “warden”) so a nested package README no longer hides the contest brief (PoolTogether `pt-v5-vault/README.md` used to win).
+
+Parsed into `ProtocolContext` → `ProtocolUnderstanding` → reasoner / path synthesizer / report:
+
+| Field | Used for |
+|---|---|
+| `known_issues` | Briefing text + accepted-playbook map |
+| `trusted_roles` | Briefing / report (never mapped to `AV-ACCESS-MISSING`) |
+| `out_of_scope_files` | Skip findings whose file suffix-matches the list |
+| `accepted_playbooks` | Skip those playbooks **and** the matching exploit paths |
+
+Conservative map (never centralization → missing access):
+
+- first-depositor / `yieldBuffer` → `AV-FIRST-DEPOSITOR`
+- storage gap → `AV-STORAGE-COLLISION`
+- FoT / rebase / “fees on transfer not supported” → `AV-FEE-ON-TRANSFER`
+- sequencer / stale / outdated answers → `AV-L2-SEQUENCER`
+- misconfigured / trusted oracle → `AV-ORACLE-SPOT` (not `AV-ORACLE-DECIMALS`)
+- rounding known → `AV-ROUNDING-DIRECTION`
+- “centralization risk” / trusted owner → `AV-GOVERNANCE-FLASH`
+
+Known-issue sections are **concatenated** (C4’s 4naly3er heading no longer hides a later `## Known issues:`). If a section has no dashes, `###` paragraphs are kept (Fraxlend). Role tables drop Q&A rows; `Roles in the protocol: Owner (… and Timelock), EmergencyAdmin` splits on commas only.
+
+`4naly3er-report.md` / `bot-report.md` are never loaded as accepted issues.
+
+### Docs-on re-run (`no_docs=False`, full-repo contract dirs)
+
+Summaries: `/tmp/c4-eval-docs/summaries.json`. Recall of official Highs is unchanged — those bugs were never in the sponsor brief. What changed is **the tool stops re-reporting accepted risk**.
+
+| Contest | Brief now in mind | Findings / paths that dropped | Kept (still in scope) |
+|---|---|---|---|
+| BakerFi | Governor / User; 82 OOS | — (known section is 4naly3er-only) | H-01 decimals, H-02 inflation, H-04 slippage |
+| Next Generation | 5 roles | — | H-01 `DOMAIN-SEPARATOR-ARG` |
+| PoolTogether | 5 known; accepted first-depositor + rounding | `AUTO-FIRST-DEPOSITOR`, `PATH-INFLATION` | ACCESS / readonly reentrancy (H-01 fee-claim still a miss) |
+| Fraxlend | 8 known; accepted spot / stale / rounding | `AUTO-L2-SEQUENCER` | H-01/H-02 `BAD-DEBT-UNMARKED`, `AUTO-ORACLE-DECIMALS` |
+| Revert Lend | Owner / EmergencyAdmin / Operators; accepted FoT | — | H-01 `PERMIT2` |
+| Size | 21 known; 4 roles; FoT / spot / stale / gov-flash; 180 OOS | `AUTO-GOVERNANCE-FLASH`, `PATH-FLASH-VOTE` | H-01..H-03 still misses; first-depositor still fires (not declared) |
+| Ethena | 7 roles; storage-gap + centralization; 48 OOS | `AUTO-STORAGE-COLLISION`, `PATH-FLASH-VOTE` | **both Mediums** `WHITELIST-GAP` |
+| Curves | none (4naly3er-only) | — | ACCESS on `setWhitelist` / `setCurves` |
+| NOYA | 5 roles; 326 OOS | — | `ORACLE-DECIMALS`; connector TVL still out of reach |
+| Wise Lending | 37 known; accepted FoT / stale / rounding | `AUTO-ROUNDING-DIRECTION` | H-03 bad-debt; first-depositor (M-03) still fires |
+
+### Tests / version
+
+`ReplayFixTests` now covers walk-up vs nested README, paragraph known issues + role prose, and “accepted `AV-GOVERNANCE-FLASH` does not emit `PATH-FLASH-VOTE`”. Full suite **121 OK**. Brain still 43 / 24 / 13 + `TAC-CONTEST-BRIEF`. `RULE_VERSION` still **2.3.0**. Offline `self TARGET` unchanged.

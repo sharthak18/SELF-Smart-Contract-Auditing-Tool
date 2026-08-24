@@ -50,8 +50,9 @@ MANIFEST_NAMES = {
 LOCK_KINDS = {"npm-lock", "yarn-lock", "pnpm-lock", "cargo-lock"}
 
 DOC_NAMES = (
-    "README.md", "README.rst", "README.txt", "README",
+    "README.md", "README-sponsor.md", "README.rst", "README.txt", "README",
     "SECURITY.md", "ARCHITECTURE.md", "WHITEPAPER.md", "DESIGN.md",
+    "scope.txt", "out_of_scope.txt",
 )
 
 MAX_MANIFEST_BYTES = 400_000
@@ -172,12 +173,30 @@ def _collect_manifests(root: Path) -> Tuple[List[ManifestFile], List[ManifestFil
     return manifests, lockfiles
 
 
+def _docs_search_roots(root: Path) -> List[Path]:
+    roots = [root]
+    cur = root
+    for _ in range(4):
+        parent = cur.parent
+        if parent == cur:
+            break
+        if any((parent / name).is_file() for name in ("README.md", "README-sponsor.md", "scope.txt")):
+            roots.append(parent)
+            break
+        cur = parent
+    return roots
+
+
 def _collect_docs(root: Path) -> str:
     chunks: List[str] = []
-    for name in DOC_NAMES:
-        path = root / name
-        if path.is_file():
-            chunks.append(_read_capped(path))
+    seen = set()
+    for base in _docs_search_roots(root):
+        for name in DOC_NAMES:
+            path = base / name
+            key = str(path)
+            if path.is_file() and key not in seen:
+                seen.add(key)
+                chunks.append(_read_capped(path))
     for folder in ("docs", "documentation", "audits", "security"):
         directory = root / folder
         if not directory.is_dir():

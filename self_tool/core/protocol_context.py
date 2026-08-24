@@ -41,6 +41,16 @@ class ProtocolContext:
     function_intent: Dict[str, Set[str]] = field(default_factory=dict)
     # e.g. {"withdraw": {"permissionless", "no_deadline"}, "initialize": {"expected_public"}}
 
+    # ── Contest / audit brief (known issues, scope, trusted roles) ─────────
+    known_issues: List[str] = field(default_factory=list)
+    out_of_scope_files: List[str] = field(default_factory=list)
+    in_scope_files: List[str] = field(default_factory=list)
+    trusted_roles: List[str] = field(default_factory=list)
+    trusted_role_notes: List[str] = field(default_factory=list)
+    accepted_playbooks: List[str] = field(default_factory=list)
+    docs_root: str = ""
+    docs_read: bool = False
+
     # ── Raw documentation context ──────────────────────────────────────────
     readme_content: str = ""
     security_notes: str = ""             # SECURITY.md or @custom:security tags

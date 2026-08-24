@@ -29,6 +29,8 @@ def reason(
     findings: List[AutonomousFinding] = []
     seen: Set[Tuple[str, str, int]] = set()
     for playbook in playbooks:
+        if playbook.id in set(understanding.accepted_playbooks or []):
+            continue
         if playbook.languages and not (set(playbook.languages) & set(understanding.languages)):
             continue
         if playbook.protocol_types and not (set(playbook.protocol_types) & set(understanding.types)):
@@ -40,6 +42,8 @@ def reason(
         if playbook.fact_predicates and not _facts_match(playbook, understanding):
             continue
         location = _locate(playbook, files, understanding)
+        if location[0] and _path_out_of_scope(location[0], understanding):
+            continue
         key = (playbook.id, location[0], location[1])
         if key in seen:
             continue
@@ -126,6 +130,17 @@ def _contains(text: str, pattern: str) -> bool:
     return pattern.lower() in text.lower()
 
 
+def _path_out_of_scope(path: str, understanding: ProtocolUnderstanding) -> bool:
+    listed = list(understanding.out_of_scope_paths or [])
+    if not listed:
+        return False
+    try:
+        from self_tool.core.doc_reader import path_is_listed
+        return path_is_listed(path, listed)
+    except Exception:
+        return False
+
+
 def _skip_file(file_ctx: FileContext) -> bool:
     path = file_ctx.relative_path.replace("\\", "/")
     if _SKIP_PATH_RE.search(path) or _CONST_FILE_RE.search(path):
@@ -149,7 +164,7 @@ def _locate(
     needles = list(playbook.required_any_patterns) + list(playbook.required_all_patterns)
     allowed = set(playbook.languages) if playbook.languages else None
     for file_ctx in files:
-        if _skip_file(file_ctx):
+        if _skip_file(file_ctx) or _path_out_of_scope(file_ctx.relative_path, understanding):
             continue
         if allowed and file_ctx.language not in allowed:
             continue
@@ -172,7 +187,7 @@ def _locate(
             line = file_ctx.content[:idx].count("\n") + 1
             fn = _function_near(understanding, file_ctx.relative_path, line)
             return file_ctx.relative_path, line, file_ctx.language, fn
-    impl = [ctx for ctx in files if not _skip_file(ctx)]
+    impl = [ctx for ctx in files if not _skip_file(ctx) and not _path_out_of_scope(ctx.relative_path, understanding)]
     pool = impl or list(files)
     if pool:
         fn = understanding.permissionless_ops[0] if understanding.permissionless_ops else ""

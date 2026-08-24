@@ -46,9 +46,27 @@ def render_markdown(audit: AutonomousAudit) -> str:
         f"- **Project fingerprint:** `{audit.project_fingerprint}`",
         f"- **Summary:** {u.summary}",
         "",
-        "### Architecture notes",
+        "### Contest / documentation brief",
         "",
     ]
+    if u.trusted_roles:
+        lines.append("- **Trusted roles:** " + ", ".join(f"`{_cell(role)}`" for role in u.trusted_roles[:16]))
+    if u.known_issues:
+        lines.append(f"- **Known issues kept in mind:** {len(u.known_issues)}")
+        lines.extend(f"  - {_cell(item)}" for item in u.known_issues[:10])
+    if u.accepted_playbooks:
+        lines.append("- **Accepted risk classes (not re-reported):** " + ", ".join(f"`{item}`" for item in u.accepted_playbooks))
+    if u.out_of_scope_paths:
+        lines.append(f"- **Out of scope paths:** {len(u.out_of_scope_paths)}")
+    if u.in_scope_paths:
+        lines.append(f"- **In-scope paths listed:** {len(u.in_scope_paths)}")
+    if not (u.trusted_roles or u.known_issues or u.out_of_scope_paths):
+        lines.append("- No contest brief (known issues / trusted roles / out-of-scope) was parsed. Re-run without `--no-docs` from the repo root if a README exists.")
+    lines.extend([
+        "",
+        "### Architecture notes",
+        "",
+    ])
     lines.extend(f"- {_cell(note)}" for note in u.architecture_notes or ["- none"])
     lines.extend(["", "### Active risk facts", ""])
     active = [key for key, value in sorted(u.facts.items()) if value]

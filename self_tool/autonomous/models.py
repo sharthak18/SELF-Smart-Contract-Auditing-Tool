@@ -77,6 +77,11 @@ class ProtocolUnderstanding:
     architecture_notes: List[str]
     source_chars: int
     file_count: int
+    known_issues: List[str] = field(default_factory=list)
+    out_of_scope_paths: List[str] = field(default_factory=list)
+    in_scope_paths: List[str] = field(default_factory=list)
+    trusted_roles: List[str] = field(default_factory=list)
+    accepted_playbooks: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -93,6 +98,11 @@ class ProtocolUnderstanding:
             "architecture_notes": list(self.architecture_notes),
             "source_chars": self.source_chars,
             "file_count": self.file_count,
+            "known_issues": list(self.known_issues),
+            "out_of_scope_paths": list(self.out_of_scope_paths),
+            "in_scope_paths": list(self.in_scope_paths),
+            "trusted_roles": list(self.trusted_roles),
+            "accepted_playbooks": list(self.accepted_playbooks),
             "contracts": [
                 {
                     "language": c.language,
@@ -145,6 +155,14 @@ class ProtocolUnderstanding:
             lines.append("Guards: " + "; ".join(self.invariants[:16]))
         if self.external_deps:
             lines.append("Deps: " + ", ".join(self.external_deps[:20]))
+        if self.trusted_roles:
+            lines.append("Trusted roles: " + ", ".join(self.trusted_roles[:16]))
+        if self.known_issues:
+            lines.append("Known issues: " + " | ".join(self.known_issues[:8]))
+        if self.accepted_playbooks:
+            lines.append("Accepted playbooks: " + ", ".join(self.accepted_playbooks))
+        if self.out_of_scope_paths:
+            lines.append(f"Out of scope files: {len(self.out_of_scope_paths)}")
         text = "\n".join(lines)
         return text if len(text) <= limit else text[: limit - 3] + "..."
 

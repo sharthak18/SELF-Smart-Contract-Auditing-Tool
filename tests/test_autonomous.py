@@ -512,6 +512,154 @@ class ReplayFixTests(unittest.TestCase):
         ids = {item.id for item in audit.findings}
         self.assertIn("AUTO-WHITELIST-GAP", ids, ids)
 
+    def test_contest_brief_is_parsed_and_honored(self):
+        from self_tool.core.doc_reader import build_protocol_context
+
+        src = """
+        pragma solidity ^0.8.20;
+        contract Vault {
+            function deposit() external {}
+            function convertToShares(uint256 a) external view returns (uint256) { return a; }
+            function totalAssets() external view returns (uint256) { return 1; }
+            function totalSupply() external view returns (uint256) { return 1; }
+        }
+        """
+        oos = """
+        pragma solidity ^0.8.20;
+        interface IPool { function liquidate(address user) external; }
+        """
+        readme = """
+# Demo Vault
+
+## Automated Findings / Publicly Known Issues
+
+- First depositor inflation is accepted until the deployer donates a yieldBuffer.
+- Lack of storage gap in the upgradeable base is known.
+
+## All trusted roles in the protocol
+
+| Role | Description |
+| --- | --- |
+| OWNER | Multisig admin |
+| KEEPER | Trusted keeper |
+
+## Files out of scope
+
+| File |
+| --- |
+| ./contracts/interfaces/IPool.sol |
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "contracts").mkdir()
+            (root / "contracts" / "interfaces").mkdir(parents=True)
+            (root / "README.md").write_text(readme, encoding="utf-8")
+            (root / "out_of_scope.txt").write_text(
+                "./contracts/interfaces/IPool.sol\n", encoding="utf-8",
+            )
+            (root / "contracts" / "Vault.sol").write_text(src, encoding="utf-8")
+            (root / "contracts" / "interfaces" / "IPool.sol").write_text(oos, encoding="utf-8")
+            ctx = build_protocol_context(str(root / "contracts"))
+            self.assertEqual(ctx.docs_root, str(root))
+            self.assertTrue(any("yieldBuffer" in item or "first depositor" in item.lower() for item in ctx.known_issues))
+            self.assertIn("OWNER", ctx.trusted_roles)
+            self.assertIn("AV-FIRST-DEPOSITOR", ctx.accepted_playbooks)
+            self.assertTrue(any("IPool.sol" in path for path in ctx.out_of_scope_files))
+            audit = run_autonomous_audit(
+                str(root / "contracts"), output=str(root / "out.md"),
+                no_docs=False, index_root=root,
+            )
+        self.assertTrue(audit.understanding.known_issues)
+        self.assertIn("OWNER", audit.understanding.trusted_roles)
+        ids = {item.id for item in audit.findings}
+        self.assertNotIn("AUTO-FIRST-DEPOSITOR", ids, ids)
+        self.assertFalse(any("IPool.sol" in item.file for item in audit.findings))
+
+    def test_docs_root_prefers_contest_readme_over_nested_package(self):
+        from self_tool.core.doc_reader import build_protocol_context, resolve_docs_root
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pkg = root / "pt-v5-vault" / "src"
+            pkg.mkdir(parents=True)
+            (root / "scope.txt").write_text("pt-v5-vault/src/PrizeVault.sol\n", encoding="utf-8")
+            (root / "README.md").write_text(
+                "# Contest\n\n## Known Issues\n\n- yieldBuffer donation covers first-depositor inflation.\n\n"
+                "## All trusted roles in the protocol\n\n| Role | Description |\n| --- | --- |\n| VAULT_OWNER | Can change claimer |\n",
+                encoding="utf-8",
+            )
+            (root / "pt-v5-vault" / "README.md").write_text(
+                "# Prize Vault package\n\nInstall with forge.\n",
+                encoding="utf-8",
+            )
+            (pkg / "PrizeVault.sol").write_text(
+                "pragma solidity ^0.8.20;\ncontract PrizeVault { function deposit() external {} }\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(resolve_docs_root(str(pkg)), root)
+            ctx = build_protocol_context(str(pkg))
+            self.assertEqual(ctx.docs_root, str(root))
+            self.assertIn("VAULT_OWNER", ctx.trusted_roles)
+            self.assertIn("AV-FIRST-DEPOSITOR", ctx.accepted_playbooks)
+
+    def test_paragraph_known_issues_and_role_prose_are_parsed(self):
+        from self_tool.core.doc_reader import build_protocol_context
+
+        readme = """
+# Lending Pair
+
+## Automated Findings / Publicly Known Issues
+
+The 4naly3er report can be found [here](https://example.com/4naly3er-report.md).
+
+## Known Issues
+
+### Misconfigured Oracles
+
+It is possible to misconfigure pairs and choose oracles and oracle normalization
+that do not match the assets.
+
+### Chainlink Oracle
+
+Chainlink oracles can provide outdated answers.
+
+## Additional Context
+
+- Roles in the protocol: Owner (which will be set to a Multisig and Timelock), EmergencyAdmin, Operators
+- Special ERC20 tokens like fee-on-transfer or rebasing tokens are not supported.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src").mkdir()
+            (root / "README.md").write_text(readme, encoding="utf-8")
+            (root / "src" / "Pair.sol").write_text(
+                "pragma solidity ^0.8.20;\ncontract Pair {}\n", encoding="utf-8",
+            )
+            ctx = build_protocol_context(str(root / "src"))
+        blob = " ".join(ctx.known_issues).lower()
+        self.assertTrue("misconfigure" in blob or "outdated" in blob, ctx.known_issues)
+        self.assertIn("Owner", ctx.trusted_roles)
+        self.assertIn("EmergencyAdmin", ctx.trusted_roles)
+        self.assertNotIn("Timelock)", ctx.trusted_roles)
+        self.assertIn("AV-ORACLE-SPOT", ctx.accepted_playbooks)
+        self.assertIn("AV-L2-SEQUENCER", ctx.accepted_playbooks)
+        self.assertIn("AV-FEE-ON-TRANSFER", ctx.accepted_playbooks)
+
+    def test_accepted_governance_playbook_skips_flash_vote_path(self):
+        from self_tool.autonomous.exploit_paths import synthesize_paths
+        from self_tool.autonomous.models import ProtocolUnderstanding
+
+        understanding = ProtocolUnderstanding(
+            name="x", types=["governance"], summary="", languages=["solidity"],
+            contracts=[], facts={"is_governance": True, "votes_not_checkpointed": True},
+            token_flows=[], invariants=[], math_formulas=[],
+            privileged_ops=[], permissionless_ops=["vote"], external_deps=[],
+            architecture_notes=[], source_chars=0, file_count=0,
+            accepted_playbooks=["AV-GOVERNANCE-FLASH"],
+        )
+        paths = synthesize_paths(understanding, [], [])
+        self.assertFalse(any(item.id == "PATH-FLASH-VOTE" for item in paths), [p.id for p in paths])
+
     def test_train_status_without_index(self):
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:
