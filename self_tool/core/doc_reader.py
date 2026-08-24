@@ -22,7 +22,6 @@ from self_tool.core.local_docs import (
     extract_pdf_text,
     extract_urls,
     list_prior_audit_files,
-    summarize_refs,
 )
 from self_tool.core.protocol_context import ProtocolContext
 
