@@ -6,6 +6,7 @@ import re
 from typing import Dict, List, Sequence, Set
 
 from self_tool.autonomous.brain import load_business_logic, load_math_models
+from self_tool.autonomous.deep_scan import deep_facts
 from self_tool.autonomous.ingest import ProjectIngestion, all_file_contexts
 from self_tool.autonomous.languages import extract_contracts
 from self_tool.autonomous.models import (
@@ -334,6 +335,7 @@ def _facts(
             r"oracle|spot|price|exchange_rate", combined, re.IGNORECASE
         )),
     }
+    facts.update(deep_facts(contracts, combined))
     return facts
 
 
@@ -695,6 +697,22 @@ def _architecture_notes(
         notes.append("Permit2 permitTransferFrom does not bind the pulled token to the expected asset.")
     if facts.get("amount_out_min_zero"):
         notes.append("A swap encodes amountOutMinimum: 0 — sandwich / leftover-dust class.")
+    if facts.get("arbitrary_erc20_from"):
+        notes.append("Unauthed transferFrom(from, ...) where from is a caller argument — arbitrary ERC-20 pull.")
+    if facts.get("arbitrary_eth_receiver"):
+        notes.append("Unauthed ETH send to a caller-supplied address.")
+    if facts.get("locked_ether"):
+        notes.append("Contract is payable but has no ETH withdraw path — received ether can be locked.")
+    if facts.get("encode_packed_collision"):
+        notes.append("abi.encodePacked of adjacent dynamic types can collide hashes.")
+    if facts.get("mapping_delete_struct"):
+        notes.append("delete on a mapping of structs does not clear nested mappings.")
+    if facts.get("msg_value_in_loop"):
+        notes.append("msg.value is read inside a loop — the same value is reused across iterations.")
+    if facts.get("unchecked_lowlevel_call"):
+        notes.append("A low-level call/.send return value is ignored.")
+    if facts.get("balance_strict_eq"):
+        notes.append("Strict equality on a balance — force-sent ETH or fee-on-transfer can desync it.")
     if ctx.local_audit_files:
         notes.append("Local prior-audit / security files: " + ", ".join(ctx.local_audit_files[:8]) + ".")
     if ctx.referenced_urls:

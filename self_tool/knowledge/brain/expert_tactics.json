@@ -284,6 +284,31 @@
         "https://docs.openzeppelin.com/contracts",
         "https://osv.dev"
       ]
+    },
+    {
+      "id": "TAC-SLITHER-CLASS",
+      "source": "Slither / Aderyn public detector lists (encoded as a review lens, not a wrapper)",
+      "title": "Walk every public function for the sinks scanners are famous for",
+      "lens": "per-function",
+      "applies_to": [
+        "solidity",
+        "vyper"
+      ],
+      "questions": [
+        "Does this unauthed function transferFrom a from argument that is not msg.sender?",
+        "Does it send ETH to a caller-supplied address rather than msg.sender?",
+        "Is msg.value read inside a loop?",
+        "Can the contract receive ETH with no withdraw?",
+        "Is abi.encodePacked hashing two adjacent string/bytes values?",
+        "Is a .call / .send return value ignored?",
+        "Is a balance compared with == ?",
+        "Does delete on a mapping of structs leave a nested mapping?"
+      ],
+      "why": "Users should not need to run Slither or Aderyn for these classes. SELF already has 161 static detectors; the gap was naming the same sinks from per-function facts so the autonomous reasoner fires without a compiler IR.",
+      "references": [
+        "https://github.com/crytic/slither/wiki/Detector-Documentation",
+        "https://github.com/Cyfrin/aderyn"
+      ]
     }
   ]
 }

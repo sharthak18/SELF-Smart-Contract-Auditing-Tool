@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from self_tool.autonomous.deep_scan import locate_deep
 from self_tool.autonomous.models import (
     AutonomousFinding,
     Playbook,
@@ -116,6 +117,22 @@ def _patterns_match(playbook: Playbook, combined: str) -> bool:
 _WORD_BOUND_PATTERNS = {"sqrtp", "basel"}
 _SKIP_PATH_RE = re.compile(r"(^|/)(interfaces?|mocks?)/", re.IGNORECASE)
 _CONST_FILE_RE = re.compile(r"constants?\.sol$", re.IGNORECASE)
+_DEEP_PLAYBOOK_FACTS = {
+    "AV-ARBITRARY-ERC20-FROM": "arbitrary_erc20_from",
+    "AV-ARBITRARY-ETH-SEND": "arbitrary_eth_receiver",
+    "AV-MSG-VALUE-LOOP": "msg_value_in_loop",
+    "AV-LOCKED-ETHER": "locked_ether",
+    "AV-ENCODEPACKED-COLLISION": "encode_packed_collision",
+    "AV-UNCHECKED-CALL": "unchecked_lowlevel_call",
+    "AV-BALANCE-EQ": "balance_strict_eq",
+    "AV-MAPPING-DELETE": "mapping_delete_struct",
+}
+
+
+def _combined_from(understanding: ProtocolUnderstanding, files: Sequence[FileContext]) -> str:
+    if understanding.source_chars:
+        return "\n".join(ctx.content for ctx in files)
+    return ""
 
 
 def _contains(text: str, pattern: str) -> bool:
@@ -159,6 +176,11 @@ def _locate(
 ) -> Tuple[str, int, str, str]:
     if playbook.id == "AV-ACCESS-MISSING":
         located = _locate_unguarded_admin(understanding)
+        if located:
+            return located
+    fact = _DEEP_PLAYBOOK_FACTS.get(playbook.id)
+    if fact:
+        located = locate_deep(understanding.contracts, fact, _combined_from(understanding, files))
         if located:
             return located
     needles = list(playbook.required_any_patterns) + list(playbook.required_all_patterns)

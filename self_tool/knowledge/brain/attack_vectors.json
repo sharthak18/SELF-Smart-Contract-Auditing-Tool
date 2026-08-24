@@ -1709,6 +1709,292 @@
       "real_incidents": [
         "Fraxlend C4 2022 H-01/H-02"
       ]
+    },
+    {
+      "id": "AV-ARBITRARY-ERC20-FROM",
+      "title": "Unauthenticated transferFrom of a caller-chosen from address",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-284",
+        "CWE-862"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        "transferFrom(",
+        "safeTransferFrom("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "arbitrary_erc20_from"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-005",
+        "SOL-HIGH-008"
+      ],
+      "description": "A public function calls token.transferFrom(from, ...) where from is a function argument and there is no authorization. Anyone who has approved this contract can have their tokens pulled by a stranger.",
+      "exploit": "Find a victim who approved the contract. Call the function with from=victim, to=attacker (or this), and drain the allowance.",
+      "remediation": "Hard-code from as msg.sender, or require msg.sender == from / an operator role before the pull.",
+      "proof_obligation": "An unrelated caller cannot transferFrom a third party's tokens even when that party approved this contract.",
+      "real_incidents": [
+        "Slither arbitrary-send-erc20 class",
+        "Multiple router/helper allowance drains"
+      ]
+    },
+    {
+      "id": "AV-ARBITRARY-ETH-SEND",
+      "title": "Unauthenticated ETH send to a caller-chosen address",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-284",
+        "CWE-862"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        ".call{value",
+        ".transfer(",
+        ".send("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "arbitrary_eth_receiver"
+      ],
+      "related_detectors": [
+        "SOL-TAINT-003",
+        "SOL-HIGH-005"
+      ],
+      "description": "A public function sends ETH to an address taken from its arguments without binding the recipient to msg.sender or a role.",
+      "exploit": "Call the function with to=attacker and empty the contract balance, or redirect a payment that was meant for someone else.",
+      "remediation": "Send only to msg.sender or to a stored owner, and authorize any payout that takes a recipient argument.",
+      "proof_obligation": "An unauthorized caller cannot choose the ETH recipient.",
+      "real_incidents": [
+        "Slither arbitrary-send-eth class",
+        "Parity wallet / unprotected withdraw variants"
+      ]
+    },
+    {
+      "id": "AV-MSG-VALUE-LOOP",
+      "title": "msg.value reused inside a loop",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        "msg.value"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "msg_value_in_loop"
+      ],
+      "related_detectors": [
+        "SOL-MED-012"
+      ],
+      "description": "A loop credits or spends msg.value on every iteration. One payment is applied N times.",
+      "exploit": "Call the batched function with a small msg.value and a long array so each element is treated as fully paid.",
+      "remediation": "Split msg.value across iterations, require sum(amounts) == msg.value, or take one payment outside the loop.",
+      "proof_obligation": "A single msg.value cannot be credited more than once.",
+      "real_incidents": [
+        "Slither msg-value-loop class",
+        "Batch-deposit contest findings"
+      ]
+    },
+    {
+      "id": "AV-LOCKED-ETHER",
+      "title": "Payable contract with no ETH withdraw path",
+      "severity": "MEDIUM",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-691"
+      ],
+      "swc": [
+        "SWC-132"
+      ],
+      "required_any_patterns": [
+        "receive()",
+        "fallback()"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "locked_ether"
+      ],
+      "related_detectors": [],
+      "description": "The contract accepts ETH via receive/fallback (or a payable function) but never sends ETH out, so deposited ether is permanently locked.",
+      "exploit": "Any ETH sent to the contract, including leftover change or a mistaken transfer, cannot be recovered.",
+      "remediation": "Add an authorized withdraw, or remove payable/receive if the contract is not supposed to hold ETH.",
+      "proof_obligation": "ETH that arrives through receive/fallback can leave through a documented path.",
+      "real_incidents": [
+        "Slither locked-ether class",
+        "Multiple 'forgot withdraw' contest Mediums"
+      ]
+    },
+    {
+      "id": "AV-ENCODEPACKED-COLLISION",
+      "title": "abi.encodePacked hash collision of adjacent dynamic types",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-327"
+      ],
+      "swc": [
+        "SWC-133"
+      ],
+      "required_any_patterns": [
+        "abi.encodePacked"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "encode_packed_collision"
+      ],
+      "related_detectors": [],
+      "description": "keccak256(abi.encodePacked(string/bytes, string/bytes)) is not injective. Different pairs can hash to the same digest and pass a signature, merkle proof, or commit.",
+      "exploit": "Craft two dynamic values whose concatenation equals a victim payload and replay a signature or collide a merkle leaf.",
+      "remediation": "Use abi.encode (length-prefixed) or insert a fixed-width separator between dynamic fields.",
+      "proof_obligation": "No two distinct dynamic tuples produce the same packed hash used for authorization.",
+      "real_incidents": [
+        "Slither encode-packed-collision class",
+        "Historical merkle/signature packing collisions"
+      ]
+    },
+    {
+      "id": "AV-UNCHECKED-CALL",
+      "title": "Low-level call or send return value ignored",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-252"
+      ],
+      "swc": [
+        "SWC-104"
+      ],
+      "required_any_patterns": [
+        ".call(",
+        ".call{",
+        ".send("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "unchecked_lowlevel_call"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-008"
+      ],
+      "description": "A .call / .send result is discarded. Failed transfers look successful and accounting can credit value that never moved.",
+      "exploit": "Force the callee to revert (or be a contract that rejects ETH) so the send fails while the protocol still marks the user paid.",
+      "remediation": "Capture (bool ok, bytes memory data) and require(ok); prefer call+check over send.",
+      "proof_obligation": "A reverting recipient cannot be treated as paid.",
+      "real_incidents": [
+        "Slither unused-return / unchecked-lowlevel class",
+        "King-of-the-ether style failed-send bugs"
+      ]
+    },
+    {
+      "id": "AV-BALANCE-EQ",
+      "title": "Strict equality on ETH or token balance",
+      "severity": "MEDIUM",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-697"
+      ],
+      "swc": [
+        "SWC-132"
+      ],
+      "required_any_patterns": [
+        "address(this).balance",
+        "balanceOf("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "balance_strict_eq"
+      ],
+      "related_detectors": [],
+      "description": "Logic uses == or != on address(this).balance or token.balanceOf. Force-sent ETH, fee-on-transfer, or a donation breaks the comparison.",
+      "exploit": "selfdestruct/beacon-force ETH into the contract, or donate a token, so a == 0 / == amount gate never passes or is skipped.",
+      "remediation": "Compare with >= / <= against tracked accounting, never against a raw balance.",
+      "proof_obligation": "Force-sent ETH and FoT donations cannot brick or bypass the comparison.",
+      "real_incidents": [
+        "Slither incorrect-equality class",
+        "Multiple vault empty-check DoS findings"
+      ]
+    },
+    {
+      "id": "AV-MAPPING-DELETE",
+      "title": "delete on a mapping of structs leaves nested mappings",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-664"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "delete "
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "mapping_delete_struct"
+      ],
+      "related_detectors": [],
+      "description": "delete users[id] zeros value fields of a struct but does not clear mapping members inside that struct. Stale nested entries survive a 'reset'.",
+      "exploit": "Reuse an id after delete and inherit the previous owner's nested mapping (allowances, balances, flags).",
+      "remediation": "Iterate and delete nested mapping keys, or bump a generation/nonce instead of delete.",
+      "proof_obligation": "After delete, every nested mapping key of that struct reads as the zero value.",
+      "real_incidents": [
+        "Slither mapping-deletion class",
+        "Account-reuse contest findings"
+      ]
     }
   ]
 }
