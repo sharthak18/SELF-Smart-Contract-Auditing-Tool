@@ -4,6 +4,40 @@ All notable changes to SELF are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] — 2026-08-25
+
+### Added
+
+- Autonomous AI auditor (`self autonomous` / `self agent`): full-project
+  ingestion, protocol understanding, trained playbook reasoning, multi-hop
+  exploit paths, and dependency-advisory matching.
+- `self train` builds a local retrieval index from the bundled exploit
+  corpus, attack-vector / math / business-logic / on-chain brain, recent
+  public incidents, expert review tactics, optional extra JSON, and
+  feedback-store weights. Index schema is `2` so older indexes rebuild.
+- Bundled knowledge brain under `self_tool/knowledge/brain/` covering
+  attack vectors, language semantics (including Cairo, Sway, Tact),
+  DeFi math models, protocol business-logic invariants, on-chain
+  behaviours, known dependency version ranges, 2023–2026 incident
+  post-mortems (`incidents.json`), and expert tactics from Trail of
+  Bits, Pashov, Spearbit, OpenZeppelin, Sherlock/Code4rena, Immunefi,
+  and Solodit (`expert_tactics.json`). New lessons train retrieval
+  without minting catalog detectors.
+- Recent protocol-logic playbooks: donation-skips-health (Euler),
+  permissionless market + harvest delta (Penpie), unauthenticated
+  zap callback (Prisma), CLAMM tick double-count (KyberSwap Elastic),
+  LST exchange-rate oracles, Uniswap v4 hooks, Permit2, ERC-7540
+  async vaults, and ERC-4337 validation.
+- Optional `--llm` refinement (OpenAI, Anthropic, Ollama) that is never
+  imported by the default `self TARGET` scan.
+- Autonomous findings use `AUTO-*` IDs with their own proof obligations
+  and do not disturb catalog ↔ review-profile parity.
+
+### Changed
+
+- Package version bumped to 2.4.0. `RULE_VERSION` stays `2.3.0` so
+  existing fingerprint-scoped suppressions remain valid.
+
 ## [2.3.0] — 2026-07-28
 
 ### Added
@@ -93,5 +127,6 @@ adheres to [Semantic Versioning](https://semver.org/).
 - Parser, detector-health, documentation safety, x-ray, OWASP
   knowledge-base upgrades.
 
+[2.4.0]: https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool/releases/tag/v2.4.0
 [2.3.0]: https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool/releases/tag/v2.3.0
 [2.2.0]: https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool/releases/tag/v2.2.0

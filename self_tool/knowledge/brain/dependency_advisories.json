@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "kind": "dependency_advisories",
+  "reviewed_at": "2026-08-25",
+  "policy": "Metadata only. No payloads. Match package name + version range.",
+  "advisories": [
+    {
+      "id": "DEP-VYPER-REENTRANCY-2023",
+      "package": "vyper",
+      "ecosystem": "pypi",
+      "affected": ">=0.2.15,<0.3.1",
+      "severity": "CRITICAL",
+      "title": "Vyper @nonreentrant lock compiled incorrectly",
+      "summary": "Compiler versions 0.2.15 through 0.3.0 emitted a broken reentrancy lock. Curve pools were exploited in July 2023.",
+      "cve": "GHSA-ph9x-4vc9-m39g",
+      "references": ["https://github.com/vyperlang/vyper/security/advisories"]
+    },
+    {
+      "id": "DEP-VYPER-STORAGE-037",
+      "package": "vyper",
+      "ecosystem": "pypi",
+      "affected": "==0.3.7",
+      "severity": "HIGH",
+      "title": "Vyper 0.3.7 storage corruption",
+      "summary": "Certain storage layouts were compiled incorrectly in 0.3.7.",
+      "cve": "GHSA-mgv8-gggw-mrg6",
+      "references": ["https://github.com/vyperlang/vyper/security/advisories"]
+    },
+    {
+      "id": "DEP-VYPER-0310-RANGE",
+      "package": "vyper",
+      "ecosystem": "pypi",
+      "affected": "==0.3.10",
+      "severity": "MEDIUM",
+      "title": "Vyper 0.3.10 sqrt / range edge cases",
+      "summary": "Review any 0.3.10 deployment against the published advisories before treating it as current.",
+      "cve": "",
+      "references": ["https://github.com/vyperlang/vyper/security/advisories"]
+    },
+    {
+      "id": "DEP-OZ-GOVERNOR-QUORUM",
+      "package": "@openzeppelin/contracts",
+      "ecosystem": "npm",
+      "affected": ">=4.3.0,<4.8.3",
+      "aliases": ["openzeppelin-contracts", "OpenZeppelin"],
+      "severity": "HIGH",
+      "title": "GovernorVotesQuorumFraction quorum updates not retroactive",
+      "summary": "Quorum updates could leave proposals in an inconsistent state. Upgrade to 4.8.3+ or 4.9+.",
+      "cve": "GHSA-93hq-5wgc-jc82",
+      "references": ["https://github.com/OpenZeppelin/openzeppelin-contracts/security/advisories"]
+    },
+    {
+      "id": "DEP-OZ-ERC721-CONSECUTIVE",
+      "package": "@openzeppelin/contracts",
+      "ecosystem": "npm",
+      "affected": ">=4.8.0,<4.8.2",
+      "aliases": ["openzeppelin-contracts"],
+      "severity": "HIGH",
+      "title": "ERC721Consecutive balance corruption",
+      "summary": "Consecutive minting could corrupt balances. Fixed in 4.8.2.",
+      "cve": "GHSA-888j-5x46-ppc3",
+      "references": ["https://github.com/OpenZeppelin/openzeppelin-contracts/security/advisories"]
+    },
+    {
+      "id": "DEP-OZ-TRANSPARENT-ADMIN",
+      "package": "@openzeppelin/contracts",
+      "ecosystem": "npm",
+      "affected": "<4.8.3",
+      "aliases": ["openzeppelin-contracts"],
+      "severity": "MEDIUM",
+      "title": "TransparentUpgradeableProxy admin collision class",
+      "summary": "Older transparent-proxy helpers had selector/admin pitfalls. Prefer 4.8.3+ or 5.x.",
+      "cve": "",
+      "references": ["https://github.com/OpenZeppelin/openzeppelin-contracts/security/advisories"]
+    },
+    {
+      "id": "DEP-OZ-INITIALIZABLE",
+      "package": "@openzeppelin/contracts-upgradeable",
+      "ecosystem": "npm",
+      "affected": "<4.4.1",
+      "aliases": ["openzeppelin-contracts-upgradeable"],
+      "severity": "HIGH",
+      "title": "Initializable reentrancy / implementation takeover class",
+      "summary": "Older Initializable did not disable initializers on the implementation. Attackers could become owner and brick proxies.",
+      "cve": "",
+      "references": ["https://github.com/OpenZeppelin/openzeppelin-contracts/security/advisories"]
+    },
+    {
+      "id": "DEP-OZ-UPGRADEABLE-MIRROR",
+      "package": "@openzeppelin/contracts-upgradeable",
+      "ecosystem": "npm",
+      "affected": ">=4.3.0,<4.8.3",
+      "aliases": ["openzeppelin-contracts-upgradeable"],
+      "severity": "HIGH",
+      "title": "Upgradeable Governor quorum (mirrors non-upgradeable advisory)",
+      "summary": "Same quorum issue as @openzeppelin/contracts <4.8.3.",
+      "cve": "GHSA-93hq-5wgc-jc82",
+      "references": ["https://github.com/OpenZeppelin/openzeppelin-contracts/security/advisories"]
+    },
+    {
+      "id": "DEP-SOLMATE-SAFETRANSFER",
+      "package": "solmate",
+      "ecosystem": "foundry",
+      "affected": "<6.2.0",
+      "aliases": ["solmate"],
+      "severity": "MEDIUM",
+      "title": "Older solmate SafeTransferLib edge cases",
+      "summary": "Early SafeTransferLib versions had nonstandard-token edge cases. Prefer current solmate or solady.",
+      "cve": "",
+      "references": ["https://github.com/transmissions11/solmate"]
+    },
+    {
+      "id": "DEP-ANCHOR-LANG",
+      "package": "anchor-lang",
+      "ecosystem": "cargo",
+      "affected": "<0.29.0",
+      "aliases": ["anchor-lang"],
+      "severity": "HIGH",
+      "title": "Pre-0.29 Anchor constraint / close classes",
+      "summary": "Older Anchor releases had several account-close and constraint soundness fixes. Pin >=0.29 and review close/init_if_needed.",
+      "cve": "",
+      "references": ["https://github.com/coral-xyz/anchor"]
+    },
+    {
+      "id": "DEP-SPL-TOKEN",
+      "package": "spl-token",
+      "ecosystem": "cargo",
+      "affected": "<3.5.0",
+      "aliases": ["spl-token"],
+      "severity": "MEDIUM",
+      "title": "Legacy SPL token crate",
+      "summary": "Very old spl-token crates predate Token-2022 awareness. Confused-deputy risk if both programs are accepted.",
+      "cve": "",
+      "references": ["https://github.com/solana-labs/solana-program-library"]
+    },
+    {
+      "id": "DEP-HARDHAT-DEFAULT-KEY",
+      "package": "hardhat",
+      "ecosystem": "npm",
+      "affected": "*",
+      "severity": "INFO",
+      "title": "Hardhat default accounts must never hold mainnet funds",
+      "summary": "The well-known Hardhat/Anvil mnemonic is public. Config that points those keys at a live network is a live key leak.",
+      "cve": "",
+      "references": ["https://hardhat.org/hardhat-runner/docs/guides/project-setup"]
+    },
+    {
+      "id": "DEP-OZ5-ERC2771",
+      "package": "@openzeppelin/contracts",
+      "ecosystem": "npm",
+      "affected": ">=5.0.0,<5.0.2",
+      "aliases": ["openzeppelin-contracts"],
+      "severity": "HIGH",
+      "title": "ERC-2771 context / Multicalled context issues in early 5.x",
+      "summary": "Early OpenZeppelin 5.0.x releases received context-related fixes. Prefer the latest 5.x patch.",
+      "cve": "",
+      "references": ["https://github.com/OpenZeppelin/openzeppelin-contracts/security/advisories"]
+    }
+  ]
+}

@@ -31,10 +31,18 @@ property-based tests on parsed Solidity structure and a modeled
 state-machine sequence fuzzer; it does **not** execute arbitrary EVM
 bytecode or Solana BPF programs.
 
+`self autonomous` is also offline by default. It reads local source,
+manifests, and the bundled knowledge brain. `self autonomous --llm` is
+a separate opt-in that may contact a user-configured OpenAI-compatible,
+Anthropic, or Ollama endpoint. That path is never imported during
+`self TARGET`. LLM output is treated as unverified Low-confidence
+leads and must cite a file that exists in the project.
+
 ### Network access (opt-in, metadata only)
 
-Only `self update` and `self intelligence rollback` open a network
-connection, and only when the user explicitly invokes them. Both:
+Only `self update`, `self intelligence rollback`, and
+`self autonomous --llm` open a network connection, and only when the
+user explicitly invokes them. The first two:
 
 - Require HTTPS with a hardcoded host allowlist
   (OWASP Smart Contract Security, OpenZeppelin advisories, Vyper

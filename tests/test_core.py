@@ -165,7 +165,7 @@ class CliTests(unittest.TestCase):
     def test_version(self):
         result = CliRunner().invoke(cli, ["--version"])
         self.assertEqual(0, result.exit_code)
-        self.assertIn("2.3.0", result.output)
+        self.assertIn("2.4.0", result.output)
 
     def test_extensionless_report_does_not_get_overwritten_by_json(self):
         runner = CliRunner()
@@ -188,7 +188,7 @@ class CliTests(unittest.TestCase):
             self.assertTrue(Path("report").exists())
             self.assertTrue(Path("report.json").exists())
             parsed = json.loads(Path("report.json").read_text(encoding="utf-8"))
-            self.assertEqual("2.3.0", parsed["version"])
+            self.assertEqual("2.4.0", parsed["version"])
             self.assertTrue(parsed["issues"])
             for issue in parsed["issues"]:
                 self.assertTrue(issue["review_status"])

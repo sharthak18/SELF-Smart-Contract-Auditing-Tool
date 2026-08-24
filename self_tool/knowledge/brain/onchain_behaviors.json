@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "kind": "onchain_behaviors",
+  "reviewed_at": "2026-08-25",
+  "behaviors": [
+    {
+      "id": "ONCHAIN-MEV-SANDWICH",
+      "title": "Sandwich / backrun of slippage-unprotected trades",
+      "signals": ["swap", "exactInput", "getAmountsOut"],
+      "facts": ["value_changing_amm_op", "missing_slippage"],
+      "description": "Searchers wrap a victim swap with a buy and a sell so the victim trades at a worse price.",
+      "defense": "minAmountOut, short deadline, private orderflow, or RFQ."
+    },
+    {
+      "id": "ONCHAIN-FRONTRUN-INIT",
+      "title": "Front-run of initialize / first deposit / commit",
+      "signals": ["initialize", "commit(", "deposit("],
+      "facts": ["initializer_unprotected", "is_share_vault"],
+      "description": "Mempool observers take ownership of a proxy or poison a vault before the intended first user.",
+      "defense": "Atomic deploy+initialize, dead shares, commit-reveal bound to msg.sender."
+    },
+    {
+      "id": "ONCHAIN-EIP6780",
+      "title": "SELFDESTRUCT no longer clears code mid-transaction (Cancun)",
+      "signals": ["selfdestruct"],
+      "facts": ["has_selfdestruct"],
+      "description": "After EIP-6780, selfdestruct only sends value unless it is in the same transaction as creation. Emergency-destroy designs break.",
+      "defense": "Do not rely on selfdestruct as an upgrade or pause mechanism."
+    },
+    {
+      "id": "ONCHAIN-TSTORE",
+      "title": "Transient storage leaks within a transaction",
+      "signals": ["tstore", "tload", "TSTORE", "TLOAD"],
+      "facts": ["uses_transient_storage"],
+      "description": "tstore lives for the whole transaction. A later call in the same tx can read leftover locks or allowances.",
+      "defense": "Clear transient slots before exiting; do not treat tstore as msg-local."
+    },
+    {
+      "id": "ONCHAIN-L2-SEQUENCER",
+      "title": "Sequencer downtime freezes oracles and liquidations",
+      "signals": ["latestRoundData", "Arbitrum", "Optimism", "Base"],
+      "facts": ["uses_chainlink_like"],
+      "description": "If the sequencer is down, timestamps stall and stale prices remain 'fresh' relative to block.timestamp.",
+      "defense": "Sequencer-uptime feed + heartbeat + pause."
+    },
+    {
+      "id": "ONCHAIN-4337",
+      "title": "Account-abstraction paymaster / validation griefing",
+      "signals": ["validateUserOp", "paymaster", "EntryPoint"],
+      "facts": ["is_account_abstraction"],
+      "description": "Validation that reads mutable state or makes external calls can be griefed or drained by bundlers.",
+      "defense": "Keep validateUserOp pure wrt third-party state; bound paymaster gas."
+    },
+    {
+      "id": "ONCHAIN-FORCE-SEND",
+      "title": "ETH can arrive without receive/fallback",
+      "signals": ["address(this).balance", "selfdestruct", "coinbase"],
+      "facts": ["trusts_raw_balance"],
+      "description": "selfdestruct, block rewards, and some system contracts can increase balance without calling receive.",
+      "defense": "Track deposits in storage; never treat raw balance as an invariant."
+    },
+    {
+      "id": "ONCHAIN-CREATE2",
+      "title": "CREATE2 identity is not code identity",
+      "signals": ["create2", "CREATE2"],
+      "facts": ["uses_create2"],
+      "description": "The same address can hold different code across time if the original contract can be destroyed.",
+      "defense": "Pin extcodehash; avoid selfdestruct at CREATE2 addresses."
+    },
+    {
+      "id": "ONCHAIN-DONATION",
+      "title": "Raw token transfer used as an accounting input",
+      "signals": ["donate", "donateToReserves", "transfer("],
+      "facts": ["donation_skips_health", "is_share_vault"],
+      "description": "Anyone can increase a contract's token balance without going through mint/deposit. If share price, health, or reserves read that balance, the donation is an attack primitive.",
+      "defense": "Ignore unexpected balance increases; run solvency checks on donate; use virtual offsets for shares."
+    },
+    {
+      "id": "ONCHAIN-PERMISSIONLESS-REG",
+      "title": "Permissionless registry becomes a callback oracle",
+      "signals": ["registerMarket", "addMarket", "createMarket"],
+      "facts": ["permissionless_market_register"],
+      "description": "A public add-market/add-strategy function lets an attacker install a contract that later supplies harvest callbacks or prices.",
+      "defense": "Governance-gated listings with a delay; treat registered addresses as untrusted until allowlisted."
+    },
+    {
+      "id": "ONCHAIN-OPS-KEYS",
+      "title": "Documented multisig is not a proof of key isolation",
+      "signals": ["multisig", "Gnosis", "Safe"],
+      "facts": ["uses_docs_multisig"],
+      "description": "Radiant 2024-class losses came from malware on signer devices meeting a live threshold. The Solidity was fine.",
+      "defense": "Hardware isolation, delayed execution, distinct custodians, and a pause that is not held by the same signers."
+    }
+  ]
+}
