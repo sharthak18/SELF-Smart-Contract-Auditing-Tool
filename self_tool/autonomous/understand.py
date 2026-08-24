@@ -134,6 +134,9 @@ def understand(
         in_scope_paths=list(protocol_ctx.in_scope_files or []),
         trusted_roles=list(protocol_ctx.trusted_roles or []),
         accepted_playbooks=list(protocol_ctx.accepted_playbooks or []),
+        referenced_urls=list(protocol_ctx.referenced_urls or []),
+        local_audit_files=list(protocol_ctx.local_audit_files or []),
+        fetched_refs=list(protocol_ctx.fetched_refs or []),
     )
 
 
@@ -313,6 +316,8 @@ def _facts(
         "docs_declare_known_issues": bool(ctx.known_issues),
         "docs_declare_trusted_roles": bool(ctx.trusted_roles),
         "docs_declare_out_of_scope": bool(ctx.out_of_scope_files),
+        "docs_declare_prior_audits": bool(ctx.has_audit_history or ctx.local_audit_files),
+        "docs_declare_links": bool(ctx.referenced_urls),
         "donation_skips_health": _donation_skips_health(combined, types),
         "permissionless_market_register": _permissionless_market(combined, functions),
         "unauthenticated_callback": _unauthenticated_callback(functions, combined),
@@ -690,6 +695,18 @@ def _architecture_notes(
         notes.append("Permit2 permitTransferFrom does not bind the pulled token to the expected asset.")
     if facts.get("amount_out_min_zero"):
         notes.append("A swap encodes amountOutMinimum: 0 — sandwich / leftover-dust class.")
+    if ctx.local_audit_files:
+        notes.append("Local prior-audit / security files: " + ", ".join(ctx.local_audit_files[:8]) + ".")
+    if ctx.referenced_urls:
+        notes.append(
+            f"{len(ctx.referenced_urls)} https link(s) inventoried from project docs "
+            "(not fetched unless --online)."
+        )
+    if ctx.fetched_refs:
+        ok = sum(1 for item in ctx.fetched_refs if item.get("ok"))
+        notes.append(f"Online fetch: {ok}/{len(ctx.fetched_refs)} inventoried link(s) retrieved.")
+    for item in ctx.online_notes or []:
+        notes.append(item)
     roles = sorted({c.role_guess for c in contracts})
     notes.append("Role guesses: " + ", ".join(f"{r}" for r in roles) + ".")
     return notes

@@ -50,6 +50,10 @@ class ProtocolContext:
     accepted_playbooks: List[str] = field(default_factory=list)
     docs_root: str = ""
     docs_read: bool = False
+    referenced_urls: List[str] = field(default_factory=list)
+    local_audit_files: List[str] = field(default_factory=list)
+    fetched_refs: List[Dict] = field(default_factory=list)
+    online_notes: List[str] = field(default_factory=list)
 
     # ── Raw documentation context ──────────────────────────────────────────
     readme_content: str = ""

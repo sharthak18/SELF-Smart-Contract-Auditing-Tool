@@ -266,6 +266,24 @@
         "https://docs.code4rena.com/roles/wardens/judging-criteria",
         "https://code4rena.com/reports/2024-05-bakerfi"
       ]
+    },
+    {
+      "id": "TAC-PRIOR-AUDITS",
+      "source": "OpenZeppelin / Spearbit / contest README discipline",
+      "title": "Read every local PDF, prior report, and linked doc before the bytecode",
+      "lens": "documentation",
+      "applies_to": [],
+      "questions": [
+        "Which prior-audit PDFs and markdown reports sit in audits/ or reports/?",
+        "Which https links in the README are protocol docs vs previous findings?",
+        "Did a previous auditor already name a class that the sponsor did not accept?",
+        "If --online is on, did fetched pages change the trusted-role or known-issue list?"
+      ],
+      "why": "Sponsors leave Spearbit PDFs, GitBook links, and old C4 reports in the repo. Ignoring them wastes time re-finding accepted risk and misses the threat model the last auditor already wrote down.",
+      "references": [
+        "https://docs.openzeppelin.com/contracts",
+        "https://osv.dev"
+      ]
     }
   ]
 }

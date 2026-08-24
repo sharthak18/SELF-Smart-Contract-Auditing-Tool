@@ -82,6 +82,9 @@ class ProtocolUnderstanding:
     in_scope_paths: List[str] = field(default_factory=list)
     trusted_roles: List[str] = field(default_factory=list)
     accepted_playbooks: List[str] = field(default_factory=list)
+    referenced_urls: List[str] = field(default_factory=list)
+    local_audit_files: List[str] = field(default_factory=list)
+    fetched_refs: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -103,6 +106,9 @@ class ProtocolUnderstanding:
             "in_scope_paths": list(self.in_scope_paths),
             "trusted_roles": list(self.trusted_roles),
             "accepted_playbooks": list(self.accepted_playbooks),
+            "referenced_urls": list(self.referenced_urls),
+            "local_audit_files": list(self.local_audit_files),
+            "fetched_refs": list(self.fetched_refs),
             "contracts": [
                 {
                     "language": c.language,
@@ -163,6 +169,13 @@ class ProtocolUnderstanding:
             lines.append("Accepted playbooks: " + ", ".join(self.accepted_playbooks))
         if self.out_of_scope_paths:
             lines.append(f"Out of scope files: {len(self.out_of_scope_paths)}")
+        if self.local_audit_files:
+            lines.append("Local audit docs: " + ", ".join(self.local_audit_files[:8]))
+        if self.referenced_urls:
+            lines.append(f"Documented links: {len(self.referenced_urls)}")
+        fetched_ok = [item for item in self.fetched_refs if item.get("ok")]
+        if fetched_ok:
+            lines.append(f"Fetched references: {len(fetched_ok)}")
         text = "\n".join(lines)
         return text if len(text) <= limit else text[: limit - 3] + "..."
 

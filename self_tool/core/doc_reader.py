@@ -18,6 +18,12 @@ import re
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
+from self_tool.core.local_docs import (
+    extract_pdf_text,
+    extract_urls,
+    list_prior_audit_files,
+    summarize_refs,
+)
 from self_tool.core.protocol_context import ProtocolContext
 
 
@@ -218,14 +224,37 @@ class DocReader:
                     text = self._safe_read(md_file)
                     all_text.append(text)
 
-        # audits/ directory
+        # audits/ + reports/: markdown, html, and PDF text
         for audit_dir in ['audits', 'audit', 'reports', 'security']:
             audit_path = self.root / audit_dir
             if audit_path.is_dir():
-                for audit_file in audit_path.rglob('*.md'):
-                    text = self._safe_read(audit_file)
-                    all_text.append(text)
-                    self.ctx.has_audit_history = True
+                for audit_file in sorted(audit_path.rglob('*')):
+                    if not audit_file.is_file():
+                        continue
+                    suffix = audit_file.suffix.lower()
+                    if suffix == '.pdf':
+                        try:
+                            extracted = extract_pdf_text(audit_file.read_bytes())
+                        except OSError:
+                            extracted = ""
+                        if extracted:
+                            all_text.append(extracted)
+                            self._doc_blobs.append((str(audit_file.relative_to(self.root)), extracted))
+                            self.ctx.has_audit_history = True
+                    elif suffix in {'.md', '.txt', '.html'}:
+                        extracted = self._safe_read(audit_file)
+                        all_text.append(extracted)
+                        self._doc_blobs.append((str(audit_file.relative_to(self.root)), extracted))
+                        self.ctx.has_audit_history = True
+
+        # Inventory links and local prior-audit files (offline acknowledge).
+        joined = "\n\n".join(all_text)
+        for url in extract_urls(joined):
+            if url not in self.ctx.referenced_urls:
+                self.ctx.referenced_urls.append(url)
+        self.ctx.local_audit_files = list_prior_audit_files(self.root)
+        if self.ctx.local_audit_files:
+            self.ctx.has_audit_history = True
 
         combined = ' '.join(all_text).lower()
         self.ctx.readme_content = combined[:20000]
@@ -653,3 +682,56 @@ def build_protocol_context(project_root: str) -> ProtocolContext:
     """Entry point — build ProtocolContext from a project root directory."""
     reader = DocReader(project_root)
     return reader.build()
+
+
+def merge_brief_from_text(ctx: ProtocolContext, text: str) -> None:
+    """Fold extra documentation (fetched pages, PDFs) into an existing brief.
+
+    Known-issue / role / OOS extraction is additive. Accepted playbooks are
+    only remapped from *this* text when it looks like a sponsor Known Issues
+    section — random blog posts do not silently accept risk.
+    """
+    if not (text or "").strip() or ctx is None:
+        return
+    from self_tool.core.local_docs import extract_urls as _urls
+
+    for url in _urls(text):
+        if url not in ctx.referenced_urls:
+            ctx.referenced_urls.append(url)
+
+    known_section = "\n\n".join(_all_sections(text, (
+        "automated findings", "publicly known issues", "publicly known issue",
+        "known issues", "known issue", "known limitations",
+    )))
+    for bullet in _known_issue_items(known_section):
+        if _is_boilerplate_known_issue(bullet):
+            continue
+        if bullet not in ctx.known_issues:
+            ctx.known_issues.append(bullet[:400])
+
+    trust_section = _first_section(text, (
+        "all trusted roles in the protocol", "trusted roles",
+    ))
+    for role, note in _role_rows(trust_section):
+        if role not in ctx.trusted_roles:
+            ctx.trusted_roles.append(role)
+        if note:
+            ctx.trusted_role_notes.append(f"{role}: {note[:240]}")
+
+    oos_section = _first_section(text, ("files out of scope", "out of scope"))
+    for path in _paths_from_text(oos_section):
+        _append_unique(ctx.out_of_scope_files, path)
+
+    if known_section.strip():
+        hay = "\n".join(ctx.known_issues).lower() + "\n" + known_section.lower()
+        for pattern, playbooks in KNOWN_ISSUE_PLAYBOOKS:
+            if re.search(pattern, hay, re.IGNORECASE):
+                for playbook in playbooks:
+                    if playbook not in ctx.accepted_playbooks:
+                        ctx.accepted_playbooks.append(playbook)
+
+    ctx.has_audit_history = ctx.has_audit_history or bool(
+        re.search(r"audit report|audited by|security review", text, re.I)
+    )
+    if not ctx.docs_read and text.strip():
+        ctx.docs_read = True

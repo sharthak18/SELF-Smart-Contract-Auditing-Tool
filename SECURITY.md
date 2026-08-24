@@ -32,17 +32,20 @@ state-machine sequence fuzzer; it does **not** execute arbitrary EVM
 bytecode or Solana BPF programs.
 
 `self autonomous` is also offline by default. It reads local source,
-manifests, and the bundled knowledge brain. `self autonomous --llm` is
-a separate opt-in that may contact a user-configured OpenAI-compatible,
-Anthropic, or Ollama endpoint. That path is never imported during
-`self TARGET`. LLM output is treated as unverified Low-confidence
-leads and must cite a file that exists in the project.
+manifests, READMEs, prior-audit PDFs, and the bundled knowledge brain.
+`self autonomous --online` is a separate opt-in that may fetch
+`https://` links already present in those docs and query OSV.dev for
+pinned dependency versions. `self autonomous --llm` is a separate
+opt-in that may contact a user-configured OpenAI-compatible, Anthropic,
+or Ollama endpoint. Neither path is imported during `self TARGET`.
+LLM output is treated as unverified Low-confidence leads and must cite
+a file that exists in the project.
 
 ### Network access (opt-in, metadata only)
 
-Only `self update`, `self intelligence rollback`, and
-`self autonomous --llm` open a network connection, and only when the
-user explicitly invokes them. The first two:
+Only `self update`, `self intelligence rollback`,
+`self autonomous --online`, and `self autonomous --llm` open a network
+connection, and only when the user explicitly invokes them. The first two:
 
 - Require HTTPS with a hardcoded host allowlist
   (OWASP Smart Contract Security, OpenZeppelin advisories, Vyper
@@ -58,6 +61,17 @@ Downloaded content is defensive metadata only. It is never executed
 as Python, never instantiated, never compiled, and never silently
 mutates detector rules. It feeds the local calibration corpus and a
 human-reviewed candidate queue.
+
+`self autonomous --online` is narrower and project-scoped:
+
+- Fetches only `https://` URLs already written in the project's own
+  documentation (plus OSV.dev for pinned lockfile versions)
+- Resolves DNS and refuses private, loopback, link-local, and metadata
+  addresses (SSRF guard)
+- Caps each response at 400 KB / 12 s, follows at most two HTTPS
+  redirects, and never executes HTML, PDF, or JSON
+- Treats a prior-audit PDF or fetched report as **context**, not as
+  accepted risk, unless the sponsor listed that class under Known Issues
 
 ### Project reasoning
 

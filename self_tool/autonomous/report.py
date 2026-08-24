@@ -60,7 +60,19 @@ def render_markdown(audit: AutonomousAudit) -> str:
         lines.append(f"- **Out of scope paths:** {len(u.out_of_scope_paths)}")
     if u.in_scope_paths:
         lines.append(f"- **In-scope paths listed:** {len(u.in_scope_paths)}")
-    if not (u.trusted_roles or u.known_issues or u.out_of_scope_paths):
+    if u.local_audit_files:
+        lines.append("- **Local prior-audit / security files:** " + ", ".join(f"`{_cell(item)}`" for item in u.local_audit_files[:10]))
+    if u.referenced_urls:
+        lines.append(f"- **Documented https links (acknowledged):** {len(u.referenced_urls)}")
+        lines.extend(f"  - {_cell(url)}" for url in u.referenced_urls[:12])
+    fetched = list(u.fetched_refs or [])
+    if fetched:
+        ok = sum(1 for item in fetched if item.get("ok"))
+        lines.append(f"- **Fetched with `--online`:** {ok}/{len(fetched)}")
+        for item in fetched[:8]:
+            mark = "ok" if item.get("ok") else "failed"
+            lines.append(f"  - [{mark}] {_cell(item.get('url', ''))} ({_cell(item.get('status', ''))})")
+    if not (u.trusted_roles or u.known_issues or u.out_of_scope_paths or u.local_audit_files or u.referenced_urls):
         lines.append("- No contest brief (known issues / trusted roles / out-of-scope) was parsed. Re-run without `--no-docs` from the repo root if a README exists.")
     lines.extend([
         "",

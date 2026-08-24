@@ -31,15 +31,18 @@ console = Console()
 @click.option("--skip-static", is_flag=True, default=False,
               help="Skip the deterministic detector pass (not recommended).")
 @click.option("--no-docs", is_flag=True, default=False)
+@click.option("--online", is_flag=True, default=False,
+              help="Opt-in: fetch inventoried https links and query OSV for pinned deps.")
 @click.option("--quiet", "-q", is_flag=True, default=False)
 def autonomous(target, output, also_json, lang, use_llm, llm_provider,
-               apply_suppressions, skip_static, no_docs, quiet):
+               apply_suppressions, skip_static, no_docs, online, quiet):
     """Read a whole project and run the autonomous AI auditor.
 
     Offline by default. Trains (or reuses) a local knowledge index built
     from real exploits, then reasons about business logic, math, on-chain
-    behaviour, and dependency versions. Pass --llm to add a cloud/local
-    model on top of the symbolic pass.
+    behaviour, and dependency versions. Pass --online to fetch inventoried
+    documentation links and query OSV for pinned dependencies. Pass --llm
+    to add a cloud/local model on top of the symbolic pass.
     """
     from self_tool.autonomous.pipeline import exit_code_for, run_autonomous_audit
 
@@ -59,6 +62,7 @@ def autonomous(target, output, also_json, lang, use_llm, llm_provider,
             apply_suppressions=apply_suppressions,
             skip_static=skip_static,
             no_docs=no_docs,
+            online=online,
         )
     except FileNotFoundError as exc:
         console.print(f"[bold red]Error:[/bold red] {exc}")

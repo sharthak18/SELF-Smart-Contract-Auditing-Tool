@@ -197,12 +197,22 @@ def _collect_docs(root: Path) -> str:
             if path.is_file() and key not in seen:
                 seen.add(key)
                 chunks.append(_read_capped(path))
-    for folder in ("docs", "documentation", "audits", "security"):
+    for folder in ("docs", "documentation", "audits", "audit", "security", "reports"):
         directory = root / folder
         if not directory.is_dir():
             continue
-        for path in sorted(directory.rglob("*.md")):
-            chunks.append(_read_capped(path))
+        for path in sorted(directory.rglob("*")):
+            if not path.is_file():
+                continue
+            suffix = path.suffix.lower()
+            if suffix == ".pdf":
+                try:
+                    from self_tool.core.local_docs import extract_pdf_text
+                    chunks.append(extract_pdf_text(path.read_bytes()))
+                except OSError:
+                    continue
+            elif suffix in {".md", ".txt", ".html"}:
+                chunks.append(_read_capped(path))
             if sum(len(chunk) for chunk in chunks) > MAX_DOC_CHARS:
                 break
     text = "\n\n".join(chunk for chunk in chunks if chunk)

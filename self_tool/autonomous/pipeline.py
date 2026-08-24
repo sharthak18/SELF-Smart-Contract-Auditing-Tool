@@ -53,6 +53,7 @@ def run_autonomous_audit(
     skip_static: bool = False,
     index_root: Optional[Path] = None,
     no_docs: bool = False,
+    online: bool = False,
 ) -> AutonomousAudit:
     started = time.time()
     diagnostics: List[str] = []
@@ -67,6 +68,21 @@ def run_autonomous_audit(
         protocol_ctx = ProtocolContext()
     else:
         protocol_ctx = build_protocol_context(ingestion.root)
+
+    online_hits = []
+    if online:
+        # Imported only on --online so default scans stay offline.
+        from self_tool.autonomous.online import (
+            collect_packages_from_manifests,
+            enrich_with_online,
+        )
+        packages = collect_packages_from_manifests(ingestion.manifests)
+        try:
+            enrichment = enrich_with_online(protocol_ctx, packages=packages)
+            online_hits = list(enrichment.osv_hits)
+            diagnostics.extend(f"online:{note}" for note in enrichment.notes)
+        except Exception as exc:
+            diagnostics.append(f"online: {type(exc).__name__}: {exc}")
 
     understanding = understand(ingestion, protocol_ctx)
 
@@ -114,6 +130,13 @@ def run_autonomous_audit(
     )
 
     dep_hits = scan_dependencies(ingestion.manifests, understanding)
+    if online_hits:
+        seen = {(hit.advisory_id, hit.package, hit.version) for hit in dep_hits}
+        for hit in online_hits:
+            key = (hit.advisory_id, hit.package, hit.version)
+            if key not in seen:
+                dep_hits.append(hit)
+                seen.add(key)
     findings.extend(hits_as_findings(dep_hits, project_fingerprint))
 
     paths = synthesize_paths(understanding, static_issues, findings)

@@ -30,6 +30,10 @@ adheres to [Semantic Versioning](https://semver.org/).
   async vaults, and ERC-4337 validation.
 - Optional `--llm` refinement (OpenAI, Anthropic, Ollama) that is never
   imported by the default `self TARGET` scan.
+- Local inventory of README links, `audits/*.pdf`, and prior-audit
+  markdown so the reasoner acknowledges them offline. Opt-in
+  `self autonomous --online` fetches those https links (SSRF-safe) and
+  queries OSV.dev for pinned npm / PyPI / crates.io versions.
 - Autonomous findings use `AUTO-*` IDs with their own proof obligations
   and do not disturb catalog ↔ review-profile parity.
 

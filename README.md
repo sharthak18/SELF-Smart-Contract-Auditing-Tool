@@ -164,8 +164,9 @@ self feedback import ./feedback.json
 ```
 
 Every command runs without network access except `self update`,
-`self intelligence rollback`, and the opt-in `self autonomous --llm`.
-See [SECURITY.md](SECURITY.md).
+`self intelligence rollback`, the opt-in `self autonomous --llm`,
+and the opt-in `self autonomous --online` (fetch inventoried doc links
++ OSV dependency lookup). See [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -185,7 +186,7 @@ self feedback remove FEEDBACK_ID
 self feedback export FILE                    # write local store as JSON
 self feedback import FILE [--replace]       # merge or replace local store
 self calibrate [--root DIR] [--json]        # confusion-matrix report
-self autonomous TARGET [--llm] [--json]     # autonomous AI audit
+self autonomous TARGET [--llm] [--online] [--json]  # autonomous AI audit
 self agent TARGET                           # alias of autonomous
 self train [EXTRA.json ...] [--status]      # train local knowledge index
 ```
@@ -369,11 +370,17 @@ What it does:
 6. **Checks dependency versions** against a local advisory brain
    (Vyper compiler ranges, OpenZeppelin GHSA windows, Anchor, solmate,
    SPL token, …). Metadata only; nothing is executed.
+7. **Acknowledges project documentation** — README links, `audits/*.pdf`,
+   Spearbit/OpenZeppelin markdown, `scope.txt`. Those facts stay in the
+   briefing even when offline. `self autonomous --online` then fetches
+   the inventoried `https://` links (SSRF-safe, size-capped) and queries
+   [OSV.dev](https://osv.dev) for pinned npm / PyPI / crates.io versions.
 
-The default reasoner is symbolic and fully offline. `--llm` is opt-in
-and requires `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OLLAMA_HOST`.
-LLM findings are labelled `AUTO-LLM-*`, confidence Low, and must cite a
-file that actually exists in the project.
+The default reasoner is symbolic and fully offline. `--online` and
+`--llm` are separate opt-in flags. `--llm` requires `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, or `OLLAMA_HOST`. LLM findings are labelled
+`AUTO-LLM-*`, confidence Low, and must cite a file that actually exists
+in the project.
 
 Report: `self-autonomous.md` (and `.json` with `--json`). Finding IDs
 use the `AUTO-*` prefix and do not go through the detector catalog —
@@ -672,10 +679,10 @@ A `Severity: high` step fails the build on High or Critical findings.
   inherited or interprocedural effects.
 - New attack classes require maintained rules, tests, and source review.
 
-SELF is offline by default. The only commands that open a network
-connection are `self update` and `self intelligence rollback`, and they
-are explicitly opt-in, HTTPS-only, host-allowlisted, size/time-limited,
-and content-hash-verified.
+SELF is offline by default. Network access is explicit and opt-in:
+`self update` / `self intelligence rollback` (allowlisted advisory
+snapshots), `self autonomous --online` (project-doc links + OSV), and
+`self autonomous --llm` (user-configured model endpoint).
 
 The fuzzing pass is structural: Hypothesis-based property testing on
 parsed contract structure and a modeled state-machine sequence fuzzer.
