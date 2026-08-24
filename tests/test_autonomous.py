@@ -315,6 +315,203 @@ class CliTests(unittest.TestCase):
             self.assertIn(result.exit_code, {1, 2}, result.output)
             self.assertTrue(Path("self-autonomous.md").exists())
 
+class ReplayFixTests(unittest.TestCase):
+    """Facts and playbooks learned from the 10-contest C4 replay."""
+
+    def _audit(self, tmp: str, source: str, name: str = "Case.sol"):
+        root = Path(tmp)
+        path = root / name
+        path.write_text(source, encoding="utf-8")
+        return run_autonomous_audit(
+            str(path), output=str(root / "out.md"), no_docs=True, index_root=root,
+        )
+
+    def test_user_supplied_domain_separator_is_critical(self):
+        src = """
+        pragma solidity ^0.8.20;
+        contract Forwarder {
+            function execute(
+                address from,
+                bytes32 domainSeparator,
+                bytes32 requestTypeHash,
+                bytes calldata suffixData,
+                bytes calldata sig
+            ) external {
+                bytes32 digest = keccak256(abi.encodePacked("\\x19\\x01", domainSeparator, requestTypeHash));
+                address signer = ecrecover(digest, 27, bytes32(0), bytes32(0));
+                require(signer == from);
+            }
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "Forwarder.sol")
+        self.assertTrue(audit.understanding.facts.get("user_supplied_domain_separator"), audit.understanding.facts)
+        ids = {item.id for item in audit.findings}
+        self.assertIn("AUTO-DOMAIN-SEPARATOR-ARG", ids, ids)
+
+    def test_public_erc20_mint_is_not_missing_access(self):
+        src = """
+        pragma solidity ^0.8.20;
+        contract Token {
+            mapping(address => uint256) public balanceOf;
+            function mint(address to, uint256 amount) external {
+                balanceOf[to] += amount;
+            }
+            function burn(address from, uint256 amount) external {
+                balanceOf[from] -= amount;
+            }
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "Token.sol")
+        self.assertFalse(audit.understanding.facts.get("unguarded_privileged_write"))
+        ids = {item.id for item in audit.findings}
+        self.assertNotIn("AUTO-ACCESS-MISSING", ids, ids)
+
+    def test_admin_setter_without_auth_still_flags(self):
+        src = """
+        pragma solidity ^0.8.20;
+        contract Admin {
+            address public owner;
+            function setOwner(address next) external {
+                owner = next;
+            }
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "Admin.sol")
+        self.assertTrue(audit.understanding.facts.get("unguarded_privileged_write"))
+        ids = {item.id for item in audit.findings}
+        self.assertIn("AUTO-ACCESS-MISSING", ids, ids)
+
+    def test_amount_out_minimum_zero_is_slippage(self):
+        src = """
+        pragma solidity ^0.8.20;
+        interface ISwap {
+            struct ExactInputParams { uint256 amountOutMinimum; }
+            function exactInputSingle(ExactInputParams calldata) external returns (uint256);
+        }
+        contract Vault {
+            ISwap public router;
+            function harvest() external {
+                router.exactInputSingle(ISwap.ExactInputParams({amountOutMinimum: 0}));
+            }
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "Vault.sol")
+        self.assertTrue(audit.understanding.facts.get("amount_out_min_zero"))
+        ids = {item.id for item in audit.findings}
+        self.assertIn("AUTO-SLIPPAGE", ids, ids)
+
+    def test_chainlink_hardcoded_1e18_is_decimal_mismatch(self):
+        src = """
+        pragma solidity ^0.8.20;
+        interface AggregatorV3 { function latestRoundData() external view returns (uint80,int256,uint256,uint256,uint80); }
+        contract EthOracle {
+            AggregatorV3 public feed;
+            function getPrecision() public pure returns (uint256) { return 10 ** 18; }
+            function getPrice() external view returns (uint256) {
+                (, int256 answer,,,) = feed.latestRoundData();
+                return uint256(answer);
+            }
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "EthOracle.sol")
+        self.assertTrue(audit.understanding.facts.get("oracle_decimal_mismatch"))
+        ids = {item.id for item in audit.findings}
+        self.assertIn("AUTO-ORACLE-DECIMALS", ids, ids)
+
+    def test_permit2_without_token_check(self):
+        src = """
+        pragma solidity ^0.8.20;
+        interface IPermit2 {
+            struct PermitTransferFrom { address token; uint256 amount; }
+            struct SignatureTransferDetails { address to; uint256 requestedAmount; }
+            function permitTransferFrom(PermitTransferFrom calldata, SignatureTransferDetails calldata, address, bytes calldata) external;
+        }
+        contract V3Vault {
+            IPermit2 public permit2;
+            function deposit(bytes calldata permitData) external {
+                (IPermit2.PermitTransferFrom memory permit, bytes memory signature) =
+                    abi.decode(permitData, (IPermit2.PermitTransferFrom, bytes));
+                permit2.permitTransferFrom(permit, IPermit2.SignatureTransferDetails(address(this), 1), msg.sender, signature);
+            }
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "V3Vault.sol")
+        self.assertTrue(audit.understanding.facts.get("permit2_token_unbound"))
+        ids = {item.id for item in audit.findings}
+        self.assertIn("AUTO-PERMIT2", ids, ids)
+
+    def test_interface_liquidate_is_not_a_finding(self):
+        src = """
+        pragma solidity ^0.8.20;
+        interface IPool {
+            function liquidate(address user) external;
+            function borrow(uint256 amount) external;
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "IPool.sol")
+        self.assertFalse(audit.understanding.facts.get("liquidation_unrestricted"))
+        ids = {item.id for item in audit.findings}
+        self.assertNotIn("AUTO-LIQUIDATION-SELF", ids, ids)
+        self.assertNotIn("AUTO-ACCESS-MISSING", ids, ids)
+
+    def test_upgradeable_with_gap_skips_storage_collision(self):
+        src = """
+        pragma solidity ^0.8.20;
+        contract Token {
+            uint256[50] private __gap;
+            function initialize() public initializer {}
+            function upgradeTo(address impl) external { }
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "Token.sol")
+        self.assertFalse(audit.understanding.facts.get("missing_storage_gap"))
+        ids = {item.id for item in audit.findings}
+        self.assertNotIn("AUTO-STORAGE-COLLISION", ids, ids)
+
+    def test_hardhat_wildcard_advisory_is_not_a_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Token.sol").write_text(
+                "pragma solidity ^0.8.20;\ncontract Token { uint256 public x; }\n",
+                encoding="utf-8",
+            )
+            (root / "package.json").write_text(
+                json.dumps({"devDependencies": {"hardhat": "2.19.0"}}),
+                encoding="utf-8",
+            )
+            audit = run_autonomous_audit(
+                str(root), output=str(root / "out.md"), no_docs=True, index_root=root,
+            )
+        ids = [item.id for item in audit.findings]
+        self.assertFalse(any("HARDHAT" in item for item in ids), ids)
+
+    def test_whitelist_burn_gap(self):
+        src = """
+        pragma solidity ^0.8.20;
+        contract UStb {
+            enum TransferState { FULLY_DISABLED, WHITELIST_ENABLED, FULLY_ENABLED }
+            TransferState public transferState;
+            function _beforeTokenTransfer(address from, address to, uint256) internal {
+                if (transferState == TransferState.WHITELIST_ENABLED) {
+                    if (to == address(0)) { return; }
+                }
+            }
+        }
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            audit = self._audit(tmp, src, "UStb.sol")
+        self.assertTrue(audit.understanding.facts.get("whitelist_burn_gap"))
+        ids = {item.id for item in audit.findings}
+        self.assertIn("AUTO-WHITELIST-GAP", ids, ids)
+
     def test_train_status_without_index(self):
         runner = CliRunner()
         with tempfile.TemporaryDirectory() as tmp:

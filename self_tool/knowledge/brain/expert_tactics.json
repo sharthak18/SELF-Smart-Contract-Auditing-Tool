@@ -16,21 +16,31 @@
         "What is the upgrade and incident-response path?"
       ],
       "why": "Most catastrophic failures live in architecture, not in a missing require.",
-      "references": ["https://www.trailofbits.com/services/software-assurance/blockchain/"]
+      "references": [
+        "https://www.trailofbits.com/services/software-assurance/blockchain/"
+      ]
     },
     {
       "id": "TAC-TOB-INVARIANTS",
       "source": "Trail of Bits",
       "title": "Write protocol invariants and fuzz them",
       "lens": "invariants",
-      "applies_to": ["amm", "lending", "vault", "staking", "bridge"],
+      "applies_to": [
+        "amm",
+        "lending",
+        "vault",
+        "staking",
+        "bridge"
+      ],
       "questions": [
         "What must remain true after every public call (solvency, k, share backing, message uniqueness)?",
         "Are those statements encoded as Foundry/Echidna/Medusa invariants?",
         "Do the invariants hold under donations, first deposit, and empty markets?"
       ],
       "why": "Surface scanners cannot see protocol-specific logic, which Immunefi says is now ~89% of DeFi losses.",
-      "references": ["https://github.com/crytic/building-secure-contracts"]
+      "references": [
+        "https://github.com/crytic/building-secure-contracts"
+      ]
     },
     {
       "id": "TAC-PASHOV-LINE",
@@ -44,7 +54,10 @@
         "What happens if a listed token is FoT, rebasing, ERC777, or Token-2022?"
       ],
       "why": "Pashov-style reviews treat every state-changing entry as an attack surface, not a happy path.",
-      "references": ["https://github.com/pashov/skills", "https://www.pashov.com/"]
+      "references": [
+        "https://github.com/pashov/skills",
+        "https://www.pashov.com/"
+      ]
     },
     {
       "id": "TAC-OZ-CEI",
@@ -58,28 +71,41 @@
         "Does ERC-4626 use a decimals offset / virtual shares?"
       ],
       "why": "Wintermute-class init and 4626 inflation still appear in 2025 contest reports.",
-      "references": ["https://docs.openzeppelin.com/contracts"]
+      "references": [
+        "https://docs.openzeppelin.com/contracts"
+      ]
     },
     {
       "id": "TAC-SPEARBIT-INTEGRATION",
       "source": "Spearbit",
       "title": "Review the integration, not only the new file",
       "lens": "integrations",
-      "applies_to": ["vault", "lending", "amm", "bridge"],
+      "applies_to": [
+        "vault",
+        "lending",
+        "amm",
+        "bridge"
+      ],
       "questions": [
         "Which external protocols are trusted for price, share rate, or message validity?",
         "If that protocol is paused, upgraded, or re-entered, what happens here?",
         "Are callbacks (flash loan, hooks, harvest, migrate) authenticated?"
       ],
       "why": "Penpie, Prisma zap, and Harvest all failed at the integration boundary.",
-      "references": ["https://spearbit.com"]
+      "references": [
+        "https://spearbit.com"
+      ]
     },
     {
       "id": "TAC-SHERLOCK-4626",
       "source": "Sherlock / Code4rena judging 2024-2025",
       "title": "Empty-vault and donation inflation is still High/Med every contest",
       "lens": "math",
-      "applies_to": ["vault", "staking", "lending"],
+      "applies_to": [
+        "vault",
+        "staking",
+        "lending"
+      ],
       "questions": [
         "What is convertToShares(1) when totalSupply is 0 and after a raw transfer of 1e18 + 1?",
         "Does a wrapper vault inherit the underlying vault's inflation?",
@@ -103,7 +129,9 @@
         "Can an attacker combine two intended features into an unintended profit?"
       ],
       "why": "Flash-loan-as-primary-vector is now marginal. Remaining losses are protocol-specific.",
-      "references": ["https://immunefi.com"]
+      "references": [
+        "https://immunefi.com"
+      ]
     },
     {
       "id": "TAC-SOLODIT-REPEAT",
@@ -116,21 +144,29 @@
         "Which C4/Sherlock issues match the inheritance tree (Aave-fork, Compound-fork, 4626, CLAMM)?"
       ],
       "why": "Most 'new' bugs are known bugs on a renamed contract.",
-      "references": ["https://solodit.xyz"]
+      "references": [
+        "https://solodit.xyz"
+      ]
     },
     {
       "id": "TAC-CHAINLINK-L2",
       "source": "Chainlink L2 guidance",
       "title": "Stale + sequencer + heartbeat on every price read",
       "lens": "oracle",
-      "applies_to": ["lending", "derivative", "vault"],
+      "applies_to": [
+        "lending",
+        "derivative",
+        "vault"
+      ],
       "questions": [
         "Is latestRoundData checked for answeredInRound, updatedAt, and non-zero answer?",
         "On L2, is the sequencer-uptime feed consulted?",
         "Is there a protocol heartbeat independent of the feed?"
       ],
       "why": "A 'fresh' timestamp during sequencer downtime is a frozen price.",
-      "references": ["https://docs.chain.link/data-feeds/l2-sequencer-feeds"]
+      "references": [
+        "https://docs.chain.link/data-feeds/l2-sequencer-feeds"
+      ]
     },
     {
       "id": "TAC-ANCHOR-ACCOUNTS",
@@ -144,21 +180,29 @@
         "Is the token program / mint / sysvar typed rather than AccountInfo?"
       ],
       "why": "Cashio, Wormhole Solana path, and most Anchor contest Highs.",
-      "references": ["https://github.com/coral-xyz/anchor"]
+      "references": [
+        "https://github.com/coral-xyz/anchor"
+      ]
     },
     {
       "id": "TAC-MEV-USER",
       "source": "Flashbots / Uniswap research",
       "title": "Treat the public mempool as an adversary",
       "lens": "mev",
-      "applies_to": ["amm", "vault", "nft"],
+      "applies_to": [
+        "amm",
+        "vault",
+        "nft"
+      ],
       "questions": [
         "Does every value-changing swap have minOut and a deadline?",
         "Can initialize, first deposit, or commit be front-run?",
         "Are liquidations and oracle updates sandwichable against users?"
       ],
       "why": "Missing slippage is still a daily extraction, even when it is not a 'hack'.",
-      "references": ["https://www.flashbots.net/"]
+      "references": [
+        "https://www.flashbots.net/"
+      ]
     },
     {
       "id": "TAC-UPGRADE-DIFF",
@@ -172,7 +216,33 @@
         "Did storage layout and initializer version increment correctly?"
       ],
       "why": "Euler's vulnerable function was introduced by a post-audit governance upgrade.",
-      "references": ["https://docs.openzeppelin.com/upgrades-plugins"]
+      "references": [
+        "https://docs.openzeppelin.com/upgrades-plugins"
+      ]
+    },
+    {
+      "id": "TAC-PER-FUNCTION-BINDING",
+      "source": "C4 2022-2025 replay of BakerFi, Next Generation, Revert Lend, Fraxlend, Ethena",
+      "title": "Ask what each argument binds, not whether the project has a check somewhere",
+      "lens": "whole-code",
+      "applies_to": [
+        "solidity",
+        "lending",
+        "vault",
+        "bridge"
+      ],
+      "questions": [
+        "Is domainSeparator / token / minOut / deadline a caller argument or computed on-chain?",
+        "Does every swap path set amountOutMinimum, or only one helper?",
+        "Does the oracle scale this feed's decimals(), or a hardcoded 1e18 from another file?",
+        "Does whitelist/blacklist wrap burn and redeem, or only transfer?",
+        "Does liquidate write off leftover debt, or only seize collateral?"
+      ],
+      "why": "Ten Code4rena high-bounty contests were missed when facts were OR-ed across the repo. A nonce in file A does not bind a signature in file B.",
+      "references": [
+        "https://code4rena.com/reports/2024-05-bakerfi",
+        "https://code4rena.com/reports/2025-01-next-generation"
+      ]
     }
   ]
 }

@@ -18,7 +18,8 @@ from self_tool.core.protocol_context import ProtocolContext
 
 
 PRIVILEGED_MODIFIERS = {
-    "onlyowner", "onlyadmin", "onlyrole", "onlygovernance", "onlykeeper",
+    "onlyowner", "onlyadmin", "onlyrole", "onlygovernance", "onlygovernor",
+    "onlymanager", "onlykeeper", "onlygov", "onlyminter", "onlypauser",
     "requiresauth", "restricted",
 }
 GUARD_MODIFIERS = {"nonreentrant", "whennotpaused", "whenpaused", "initializer"}
@@ -139,16 +140,23 @@ def _protocol_types(
     scores: Dict[str, int] = {}
     blob = " ".join([
         ctx.protocol_type, ctx.protocol_name, ctx.description,
-        ctx.readme_content, combined[:20000],
+        ctx.readme_content, combined[:200000],
         " ".join(c.name for c in contracts),
         " ".join(c.role_guess for c in contracts),
     ]).lower()
     catalog = load_business_logic()
+    # mint/burn/deposit appear on almost every token and must not promote a type alone.
+    generic_verbs = {
+        "mint", "burn", "lock", "release", "deposit", "withdraw", "swap",
+        "harvest", "tend", "redeem",
+    }
     for proto_id, spec in catalog.items():
         score = 0
         if ctx.protocol_type == proto_id:
             score += 4
         for verb in spec.get("entry_verbs") or []:
+            if verb.lower() in generic_verbs:
+                continue
             if re.search(rf"\b{re.escape(verb.lower())}\b", blob):
                 score += 1
         if proto_id in blob:
@@ -167,6 +175,8 @@ def _protocol_types(
 def _is_auth(func: ExtractedFunction) -> bool:
     mods = {item.lower() for item in func.modifiers}
     if mods & PRIVILEGED_MODIFIERS:
+        return True
+    if any(item.startswith("only") or item.endswith("auth") or item.endswith("role") for item in mods):
         return True
     if AUTH_BODY_RE.search(func.body) or AUTH_BODY_RE.search(func.params):
         return True
@@ -198,8 +208,9 @@ def _facts(
         if not _is_auth(func)
     )
     ext_before_write = any(_external_call_before_write(func) for func in public_fns)
-    uses_spot = bool(ORACLE_RE.search(combined)) and not (
-        ctx.uses_twap or ctx.uses_chainlink or "observe(" in combined or "consult(" in combined
+    uses_spot = bool(re.search(r"\bgetReserves\s*\(|\bslot0\s*\(", combined)) and not (
+        ctx.uses_twap or ctx.uses_chainlink or "observe(" in combined
+        or "consult(" in combined or "latestRoundData" in combined
     )
     value_depends_price = any(key in types for key in ("lending", "vault", "derivative", "amm"))
     share_vault = bool(SHARE_RE.search(combined)) and any(
@@ -207,11 +218,7 @@ def _facts(
         for key in ("vault", "staking", "lending")
     )
     missing_virtual = share_vault and not VIRTUAL_SHARES_RE.search(combined)
-    unguarded = any(
-        func.is_privileged_name and _is_public(func) and not _is_auth(func)
-        and func.name.lower() not in {"receive", "fallback", "__default__", "__init__"}
-        for func in functions
-    )
+    unguarded = _unguarded_admin(contracts)
     vyper_bad = False
     for match in VYPER_VERSION_RE.finditer(combined):
         if _vyper_vulnerable(match.group(1)):
@@ -237,20 +244,25 @@ def _facts(
         "missing_signature_binding": bool(SIG_RE.search(combined)) and not re.search(
             r"nonces|chainid|CHAINID|EIP712|domainSeparator", combined, re.IGNORECASE
         ),
+        "user_supplied_domain_separator": bool(re.search(
+            r"function\s+\w+\s*\([^)]{0,500}\bdomainSeparator\b",
+            combined,
+        )),
         "is_upgradeable": bool(ctx.is_upgradeable or re.search(
             r"UUPSUpgradeable|TransparentUpgradeableProxy|upgradeTo|delegatecall",
             combined,
         )),
-        "initializer_unprotected": bool(INIT_RE.search(combined)) and not bool(DISABLE_INIT_RE.search(combined)),
+        "initializer_unprotected": _initializer_unprotected(functions, combined),
         "value_changing_amm_op": any(t in types for t in ("amm",)) or bool(re.search(
-            r"\bfunction\s+swap\b|\bfunction\s+exchange\b", combined
+            r"\bfunction\s+swap\b|\bfunction\s+exchange\b|exactInput(?:Single)?\s*\(",
+            combined,
         )),
-        "missing_slippage": bool(re.search(r"\b(swap|exchange|addLiquidity)\b", combined, re.IGNORECASE))
-            and not bool(SLIPPAGE_RE.search(combined)),
+        "amount_out_min_zero": _amount_out_min_zero(combined),
+        "missing_slippage": _missing_slippage(functions, combined),
         "is_governance": "governance" in types,
         "votes_not_checkpointed": "governance" in types and not bool(CHECKPOINT_RE.search(combined)),
-        "is_bridge": "bridge" in types,
-        "missing_message_nullifier": "bridge" in types and not bool(NULLIFIER_RE.search(combined)),
+        "is_bridge": _is_bridge(types, combined),
+        "missing_message_nullifier": _is_bridge(types, combined) and not bool(NULLIFIER_RE.search(combined)),
         "has_selfdestruct": bool(SELFDESTRUCT_RE.search(combined)),
         "solana_missing_signer_or_cpi": _solana_auth_gap(contracts, combined),
         "solana_alias_or_sysvar_risk": "rust" in ingestion.languages and bool(re.search(
@@ -265,11 +277,24 @@ def _facts(
         "credits_transfer_amount_not_delta": bool(re.search(r"transferFrom", combined))
             and not bool(re.search(r"balanceOf\s*\([^)]+\)\s*;", combined)),
         "uses_create2": bool(CREATE2_RE.search(combined)),
+        "create2_with_selfdestruct": bool(CREATE2_RE.search(combined)) and bool(SELFDESTRUCT_RE.search(combined)),
         "uses_chainlink_like": bool(ctx.uses_chainlink or re.search(r"latestRoundData|AggregatorV3", combined)),
         "missing_sequencer_check": bool(ctx.uses_chainlink or re.search(r"latestRoundData", combined))
             and not bool(re.search(r"sequencer", combined, re.IGNORECASE)),
-        "is_lending": "lending" in types,
-        "liquidation_unrestricted": "lending" in types and bool(re.search(r"liquidate", combined, re.IGNORECASE)),
+        "is_lending": (
+            "lending" in types
+            or bool(re.search(r"\bfunction\s+(borrow|liquidate)\w*\s*\(", combined, re.IGNORECASE))
+        ),
+        "liquidation_unrestricted": _liquidation_unrestricted(contracts),
+        "oracle_decimal_mismatch": _oracle_decimal_mismatch(ingestion),
+        "permit2_token_unbound": _permit2_token_unbound(combined),
+        "whitelist_burn_gap": bool(re.search(r"WHITELIST_ENABLED", combined)) and bool(re.search(
+            r"to\s*==\s*address\s*\(\s*0\s*\)", combined
+        )),
+        "missing_storage_gap": bool(ctx.is_upgradeable or re.search(
+            r"UUPSUpgradeable|TransparentUpgradeableProxy|upgradeTo|delegatecall",
+            combined,
+        )) and not bool(re.search(r"\b__gap\b", combined)),
         "is_huff": "huff" in ingestion.languages,
         "cairo_unauth_write": _lang_unauth(contracts, "cairo", r"get_caller_address"),
         "sway_unauth_write": _lang_unauth(contracts, "sway", r"msg_sender"),
@@ -285,7 +310,7 @@ def _facts(
         "unauthenticated_callback": _unauthenticated_callback(functions, combined),
         "concentrated_liquidity": bool(CLAMM_RE.search(combined)),
         "clamm_tick_equality_risk": bool(re.search(
-            r"\bsqrtP\b|nextSqrtP|baseL|nearestCurrentTick", combined
+            r"\bnextSqrtP\b|\bbaseL\b|\bnearestCurrentTick\b", combined
         )),
         "uses_lst_exchange_rate": bool(LST_RATE_RE.search(combined)),
         "has_hooks": bool(HOOK_RE.search(combined)),
@@ -297,6 +322,155 @@ def _facts(
         )),
     }
     return facts
+
+
+_ADMIN_WORD_RE = re.compile(
+    r"owner|admin|upgrade|pause|unpause|sweep|rescue|grantRole|"
+    r"revokeRole|transferOwnership|selfdestruct|destroy|processMessage|"
+    r"completeTransfer",
+    re.IGNORECASE,
+)
+
+
+def _is_admin_name(name: str) -> bool:
+    # Case-sensitive setX so settings()/settlement() are not admin.
+    if re.match(r"set[A-Z]", name):
+        return True
+    return bool(_ADMIN_WORD_RE.search(name))
+_USER_FACING_PRIV = re.compile(
+    r"^(mint|burn|liquidate|seize|initialize|init)$",
+    re.IGNORECASE,
+)
+_SKIP_FUNCS = {"receive", "fallback", "__default__", "__init__", "constructor"}
+
+
+def _is_impl_contract(contract: ExtractedContract) -> bool:
+    if contract.kind in {"interface", "library"}:
+        return False
+    path = contract.file.replace("\\", "/").lower()
+    if "/interfaces/" in path or "/mocks/" in path:
+        return False
+    return True
+
+
+def _unguarded_admin(contracts: Sequence[ExtractedContract]) -> bool:
+    """True only for admin-style writes, not public ERC-20 mint/burn/liquidate."""
+    for contract in contracts:
+        if not _is_impl_contract(contract):
+            continue
+        for func in contract.functions:
+            if func.name.lower() in _SKIP_FUNCS:
+                continue
+            mods = {item.lower() for item in func.modifiers}
+            if func.name.lower() == "initialize" and ("initializer" in mods or "reinitializer" in mods):
+                continue
+            adminish = _is_admin_name(func.name)
+            if not adminish and not func.is_privileged_name:
+                continue
+            if _USER_FACING_PRIV.fullmatch(func.name):
+                continue
+            if not adminish:
+                continue
+            if _is_public(func) and not _is_auth(func):
+                return True
+    return False
+
+
+def _initializer_unprotected(functions: Sequence[ExtractedFunction], combined: str) -> bool:
+    if not re.search(r"\bfunction\s+initialize\b", combined):
+        return False
+    for func in functions:
+        if func.name.lower() != "initialize":
+            continue
+        mods = {item.lower() for item in func.modifiers}
+        if "initializer" in mods or "reinitializer" in mods:
+            return False
+        if _is_auth(func):
+            return False
+        if _is_public(func):
+            return True
+    if re.search(r"\binitializer\b", combined) or DISABLE_INIT_RE.search(combined):
+        return False
+    return True
+
+
+def _amount_out_min_zero(combined: str) -> bool:
+    return bool(re.search(
+        r"amountOutMinimum\s*:\s*0\b|amountOutMin(?:imum)?\s*[:=]\s*0\b|"
+        r"minAmountOut\s*[:=]\s*0\b",
+        combined,
+    ))
+
+
+def _missing_slippage(functions: Sequence[ExtractedFunction], combined: str) -> bool:
+    if _amount_out_min_zero(combined):
+        return True
+    saw_swap = False
+    bounded = False
+    for func in functions:
+        if not re.search(r"swap|exactInput|exactOutput|exchange", func.name, re.I):
+            continue
+        saw_swap = True
+        if SLIPPAGE_RE.search(func.body) or SLIPPAGE_RE.search(func.params):
+            bounded = True
+    return saw_swap and not bounded
+
+
+def _is_bridge(types: Sequence[str], combined: str) -> bool:
+    if "bridge" not in types:
+        return False
+    return bool(re.search(
+        r"processMessage|completeTransfer|verifyVM|parseAndVerify",
+        combined,
+    ))
+
+
+def _strip_sol_comments(body: str) -> str:
+    body = re.sub(r"//.*?$", "", body, flags=re.MULTILINE)
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
+    return body
+
+
+def _liquidation_unrestricted(contracts: Sequence[ExtractedContract]) -> bool:
+    """True if some implementation liquidate() never writes off leftover debt."""
+    unmarked = False
+    for contract in contracts:
+        if not _is_impl_contract(contract):
+            continue
+        for func in contract.functions:
+            if not re.match(r"liquidate", func.name, re.I):
+                continue
+            body = _strip_sol_comments(func.body or "")
+            if not re.search(r"badDebt|writeOff|writeoff|heal|socialize", body, re.I):
+                unmarked = True
+    return unmarked
+
+
+def _oracle_decimal_mismatch(ingestion: ProjectIngestion) -> bool:
+    from self_tool.autonomous.ingest import all_file_contexts
+
+    for ctx in all_file_contexts(ingestion):
+        text = ctx.content
+        if not re.search(r"latestRoundData", text):
+            continue
+        if re.search(r"\.decimals\s*\(", text):
+            continue
+        if re.search(r"10\s*\*\*\s*18|1e18|getPrecision", text):
+            return True
+    return False
+
+
+def _permit2_token_unbound(combined: str) -> bool:
+    if not re.search(r"permitTransferFrom", combined):
+        return False
+    if re.search(
+        r"permit\.[A-Za-z.]*token\s*==|==\s*permit\.[A-Za-z.]*token|"
+        r"permitted\.token|require\s*\([^;]{0,160}token[^;]{0,80}asset",
+        combined,
+        re.IGNORECASE,
+    ):
+        return False
+    return True
 
 
 def _donation_skips_health(combined: str, types: Sequence[str]) -> bool:
@@ -500,6 +674,14 @@ def _architecture_notes(
         notes.append("Concentrated-liquidity math present — review tick-boundary equality and spoof tokens.")
     if facts.get("reward_measured_as_balance_delta"):
         notes.append("Harvest appears to credit a raw balance delta — re-entrant deposits can inflate rewards.")
+    if facts.get("user_supplied_domain_separator"):
+        notes.append("A verifier accepts a caller-supplied domainSeparator — treat as cross-chain / cross-contract replay.")
+    if facts.get("oracle_decimal_mismatch"):
+        notes.append("Chainlink latestRoundData is scaled with a hardcoded 1e18 / getPrecision and never reads feed.decimals().")
+    if facts.get("permit2_token_unbound"):
+        notes.append("Permit2 permitTransferFrom does not bind the pulled token to the expected asset.")
+    if facts.get("amount_out_min_zero"):
+        notes.append("A swap encodes amountOutMinimum: 0 — sandwich / leftover-dust class.")
     roles = sorted({c.role_guess for c in contracts})
     notes.append("Role guesses: " + ", ".join(f"{r}" for r in roles) + ".")
     return notes

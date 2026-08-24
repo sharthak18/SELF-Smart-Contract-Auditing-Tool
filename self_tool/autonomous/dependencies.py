@@ -28,7 +28,13 @@ def scan_dependencies(
                 # still allow foundry/npm aliasing for OZ
                 if not _name_matches(name, advisory):
                     continue
-            if not version_in_range(version, advisory.get("affected") or "*"):
+            affected = advisory.get("affected") or "*"
+            severity = (advisory.get("severity") or "MEDIUM").upper()
+            # Wildcard INFO/LOW advisories (e.g. hardhat *) match every
+            # package.json and drown first-party findings.
+            if affected == "*" and severity in {"INFO", "LOW"}:
+                continue
+            if not version_in_range(version, affected):
                 continue
             key = (advisory["id"], name, version, source)
             if key in seen:
@@ -250,6 +256,8 @@ def hits_as_findings(hits: Sequence[DependencyHit], project_fingerprint: str) ->
 
     findings = []
     for hit in hits:
+        if (hit.severity or "").upper() == "INFO":
+            continue
         findings.append(AutonomousFinding(
             id=hit.id,
             title=f"Dependency: {hit.title}",

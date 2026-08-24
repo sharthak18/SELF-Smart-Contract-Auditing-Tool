@@ -109,10 +109,32 @@ def _patterns_match(playbook: Playbook, combined: str) -> bool:
     return True
 
 
+_WORD_BOUND_PATTERNS = {"sqrtp", "basel"}
+_SKIP_PATH_RE = re.compile(r"(^|/)(interfaces?|mocks?)/", re.IGNORECASE)
+_CONST_FILE_RE = re.compile(r"constants?\.sol$", re.IGNORECASE)
+
+
 def _contains(text: str, pattern: str) -> bool:
     if not pattern:
         return True
+    if pattern.lower() in _WORD_BOUND_PATTERNS:
+        return re.search(
+            rf"(?<![A-Za-z0-9_]){re.escape(pattern)}(?![A-Za-z0-9_])",
+            text,
+            re.IGNORECASE,
+        ) is not None
     return pattern.lower() in text.lower()
+
+
+def _skip_file(file_ctx: FileContext) -> bool:
+    path = file_ctx.relative_path.replace("\\", "/")
+    if _SKIP_PATH_RE.search(path) or _CONST_FILE_RE.search(path):
+        return True
+    if re.search(r"^\s*interface\s+\w+", file_ctx.content, re.MULTILINE) and not re.search(
+        r"^\s*(abstract\s+)?contract\s+\w+", file_ctx.content, re.MULTILINE
+    ):
+        return True
+    return False
 
 
 def _locate(
@@ -120,23 +142,69 @@ def _locate(
     files: Sequence[FileContext],
     understanding: ProtocolUnderstanding,
 ) -> Tuple[str, int, str, str]:
+    if playbook.id == "AV-ACCESS-MISSING":
+        located = _locate_unguarded_admin(understanding)
+        if located:
+            return located
     needles = list(playbook.required_any_patterns) + list(playbook.required_all_patterns)
     allowed = set(playbook.languages) if playbook.languages else None
     for file_ctx in files:
+        if _skip_file(file_ctx):
+            continue
         if allowed and file_ctx.language not in allowed:
             continue
         for needle in needles:
             if not needle:
                 continue
-            idx = file_ctx.content.lower().find(needle.lower())
-            if idx >= 0:
-                line = file_ctx.content[:idx].count("\n") + 1
-                fn = _function_near(understanding, file_ctx.relative_path, line)
-                return file_ctx.relative_path, line, file_ctx.language, fn
-    if files:
+            if needle.lower() in _WORD_BOUND_PATTERNS:
+                match = re.search(
+                    rf"(?<![A-Za-z0-9_]){re.escape(needle)}(?![A-Za-z0-9_])",
+                    file_ctx.content,
+                    re.IGNORECASE,
+                )
+                if not match:
+                    continue
+                idx = match.start()
+            else:
+                idx = file_ctx.content.lower().find(needle.lower())
+                if idx < 0:
+                    continue
+            line = file_ctx.content[:idx].count("\n") + 1
+            fn = _function_near(understanding, file_ctx.relative_path, line)
+            return file_ctx.relative_path, line, file_ctx.language, fn
+    impl = [ctx for ctx in files if not _skip_file(ctx)]
+    pool = impl or list(files)
+    if pool:
         fn = understanding.permissionless_ops[0] if understanding.permissionless_ops else ""
-        return files[0].relative_path, 1, files[0].language, fn
+        return pool[0].relative_path, 1, pool[0].language, fn
     return "", 0, "", ""
+
+
+def _locate_unguarded_admin(
+    understanding: ProtocolUnderstanding,
+) -> Optional[Tuple[str, int, str, str]]:
+    admin_word = re.compile(
+        r"owner|admin|upgrade|pause|unpause|sweep|rescue|grantRole|"
+        r"revokeRole|transferOwnership|selfdestruct|destroy",
+        re.IGNORECASE,
+    )
+    for contract in understanding.contracts:
+        if contract.kind in {"interface", "library"}:
+            continue
+        for func in contract.functions:
+            if not (re.match(r"set[A-Z]", func.name) or admin_word.search(func.name)):
+                continue
+            mods = {item.lower() for item in func.modifiers}
+            if any(item.startswith("only") or item.endswith("auth") or item.endswith("role") for item in mods):
+                continue
+            if re.search(
+                r"msg\.sender\s*==|require\s*\(\s*msg\.sender|onlyOwner|hasRole",
+                func.body,
+                re.IGNORECASE,
+            ):
+                continue
+            return func.file, func.line, func.language, f"{contract.name}.{func.name}"
+    return None
 
 
 def _function_near(understanding: ProtocolUnderstanding, file: str, line: int) -> str:

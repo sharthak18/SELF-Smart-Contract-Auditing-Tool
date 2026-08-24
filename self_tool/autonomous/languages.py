@@ -259,7 +259,7 @@ def guess_role(name: str, inherits: Iterable[str], content: str) -> str:
     blob = " ".join([name, " ".join(inherits), content[:2000]]).lower()
     checks = (
         ("oracle", ("oracle", "aggregatorv3", "twap", "pricefeed")),
-        ("bridge", ("bridge", "message", "wormhole", "layerzero", "mailbox")),
+        ("bridge", ("wormhole", "layerzero", "lzreceive", "processmessage", "completetransfer", "mailbox")),
         ("governor", ("governor", "timelock", "proposal", "dao")),
         ("pool", ("pool", "pair", "amm", "swap", "reserves")),
         ("vault", ("vault", "erc4626", "strategy", "share")),

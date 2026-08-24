@@ -109,10 +109,17 @@ H-04 is literal zero min-out in the Uni v3 adapter:
 
 ## Suggested follow-ups (not done in this replay)
 
-- Fact: Chainlink `answer` used while `getPrecision() == 1e18` and no `10 ** (18 - decimals())` scale (would have caught **H-01**).
-- Per-function slippage (ignore interface-only `deadline`).
-- Tighten `sqrtP` matching so `sqrtPriceLimitX96` is not Kyber.
-- Quarantine `SOL-CRIT-EXPLOIT-*` from default scoring or require graph corroboration.
+Those four items were implemented in the ten-contest patch (see `eval/c4-replay-10.md`). Re-score of this same snapshot after the patch:
+
+| C4 ID | After patch |
+|---|---|
+| **H-01** | **HIT** — `AUTO-ORACLE-DECIMALS` at `oracles/EthOracle.sol:31` |
+| **H-02** | **HIT** — unchanged |
+| **H-03** | **MISS** — still protocol leftover / fee-tier math |
+| **H-04** | **HIT** — now also `AUTO-SLIPPAGE` (not only static `SOL-HIGH-009`) |
+| High-only | **3 / 4** (was 2 / 4) |
+
+`AUTO-CLAMM-TICK`, `AUTO-ORACLE-SPOT`, `AUTO-STORAGE-COLLISION`, and the Hardhat advisory flood are gone on this repo.
 
 ## Re-run
 
