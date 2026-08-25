@@ -1,0 +1,588 @@
+{
+  "schema_version": 1,
+  "kind": "incidents",
+  "reviewed_at": "2026-08-25",
+  "policy": "Defensive post-mortem metadata only. No payloads, no private keys, no unpublished 0-days. Sources are public writeups from Rekt, Immunefi, protocol teams, audit firms, and contest reports.",
+  "sources": [
+    "https://rekt.news",
+    "https://immunefi.com",
+    "https://solodit.xyz",
+    "https://code4rena.com/reports",
+    "https://github.com/sherlock-audit",
+    "https://blog.openzeppelin.com",
+    "https://blog.trailofbits.com",
+    "https://spearbit.com",
+    "https://www.halborn.com/blog",
+    "https://github.com/SunWeb3Sec/DeFiHackLabs"
+  ],
+  "incidents": [
+    {
+      "id": "INC-EULER-2023",
+      "name": "Euler Finance donateToReserves",
+      "date": "2023-03-13",
+      "loss_usd": 197000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "lending"
+      ],
+      "root_cause_class": "donation-skips-health-check",
+      "playbooks": [
+        "AV-DONATION-HEALTH",
+        "AV-LIQUIDATION-SELF",
+        "AV-FIRST-DEPOSITOR"
+      ],
+      "facts": [
+        "is_lending",
+        "donation_skips_health",
+        "liquidation_unrestricted"
+      ],
+      "summary": "eIP-14 added donateToReserves without the account-health check every other balance path used. An attacker flash-loaned, looped eToken/dToken, donated collateral to reserves (debt unchanged), then self-liquidated at a discount.",
+      "lesson": "Every path that reduces collateral or equity must run the same solvency check as withdraw/borrow/liquidate. A 'donation' is still a balance mutation.",
+      "references": [
+        "https://medium.com/@omniscia.io/euler-finance-incident-post-mortem-1ce077c28454",
+        "https://rekt.news/euler-rekt/"
+      ]
+    },
+    {
+      "id": "INC-KYBERSWAP-2023",
+      "name": "KyberSwap Elastic tick double-count",
+      "date": "2023-11-22",
+      "loss_usd": 46000000,
+      "chain": "multi",
+      "protocol_types": [
+        "amm"
+      ],
+      "root_cause_class": "clamm-tick-boundary",
+      "playbooks": [
+        "AV-CLAMM-TICK",
+        "AV-ORACLE-SPOT"
+      ],
+      "facts": [
+        "concentrated_liquidity"
+      ],
+      "summary": "When sqrtP sat exactly on a tick boundary, liquidity was added both to baseL and again when the tick was crossed. A flash-loaned multi-tick swap drained concentrated-liquidity pools.",
+      "lesson": "CLAMM invariants must hold on the exact tick, not only strictly inside a range. Fuzz getTickAtSqrtRatio / nextSqrtP equality.",
+      "references": [
+        "https://100proof.org/kyberswap-post-mortem.html",
+        "https://rekt.news/kyberswap-rekt/"
+      ]
+    },
+    {
+      "id": "INC-CURVE-VYPER-2023",
+      "name": "Curve Vyper compiler reentrancy",
+      "date": "2023-07-30",
+      "loss_usd": 70000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "amm"
+      ],
+      "root_cause_class": "compiler-reentrancy-lock",
+      "playbooks": [
+        "AV-VYPER-COMPILER",
+        "AV-REENTRANCY-CLASSIC"
+      ],
+      "facts": [
+        "vyper_vulnerable_compiler"
+      ],
+      "summary": "Vyper 0.2.15\u20130.3.0 emitted a broken @nonreentrant lock. Factory pools compiled with those versions were re-entered during add_liquidity.",
+      "lesson": "Pin compiler versions against public advisories. A source-level lock is not a lock if the compiler is wrong.",
+      "references": [
+        "https://rekt.news/curve-rekt/",
+        "https://github.com/vyperlang/vyper/security/advisories"
+      ]
+    },
+    {
+      "id": "INC-PRISMA-2024",
+      "name": "Prisma MigrateTroveZap flash-loan callback",
+      "date": "2024-03-28",
+      "loss_usd": 12000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "lending"
+      ],
+      "root_cause_class": "unauthenticated-callback",
+      "playbooks": [
+        "AV-CALLBACK-UNVALIDATED",
+        "AV-FLASHLOAN-CALLBACK"
+      ],
+      "facts": [
+        "has_flashloan_callback",
+        "unauthenticated_callback"
+      ],
+      "summary": "onFlashloan() on a migration zap accepted attacker-chosen trove parameters. Users who had approved the zap lost collateral; the zap reopened their trove with less collateral.",
+      "lesson": "Callbacks are public ABI. Bind caller, initiator, and the exact encoded action. Zap approvals are standing authorities.",
+      "references": [
+        "https://hackmd.io/@PrismaRisk/PostMortem0328"
+      ]
+    },
+    {
+      "id": "INC-PENPIE-2024",
+      "name": "Penpie permissionless market + harvest reentrancy",
+      "date": "2024-09-03",
+      "loss_usd": 27000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "staking"
+      ],
+      "root_cause_class": "permissionless-integration",
+      "playbooks": [
+        "AV-PERMISSIONLESS-MARKET",
+        "AV-REENTRANCY-CLASSIC"
+      ],
+      "facts": [
+        "permissionless_market_register",
+        "external_call_before_write"
+      ],
+      "summary": "Anyone could register a Pendle-style market. A fake SY token re-entered _harvestBatchMarketRewards, which measured rewards as a balance delta and had no reentrancy lock.",
+      "lesson": "Do not treat permissionless registries as trusted oracles. Reward = after-before is unsafe if the callee can re-enter and deposit.",
+      "references": [
+        "https://www.halborn.com/blog/post/explained-the-penpie-hack-september-2024"
+      ]
+    },
+    {
+      "id": "INC-RADIANT-2024",
+      "name": "Radiant Capital signer-device compromise",
+      "date": "2024-10-16",
+      "loss_usd": 50000000,
+      "chain": "multi",
+      "protocol_types": [
+        "lending"
+      ],
+      "root_cause_class": "ops-key-compromise",
+      "playbooks": [
+        "AV-ACCESS-MISSING"
+      ],
+      "facts": [
+        "uses_docs_multisig"
+      ],
+      "summary": "A live lending market was drained after developer devices were malware-compromised and the multisig threshold was met. Not a Solidity bug; an operational-security failure.",
+      "lesson": "On-chain 'multisig' is only as strong as key custody, hardware isolation, and delayed execution. Documented multisig is not a proof.",
+      "references": [
+        "https://rekt.news/radiant-capital-rekt-2/"
+      ]
+    },
+    {
+      "id": "INC-CETUS-2025",
+      "name": "Cetus Protocol spoof-token pricing (Sui)",
+      "date": "2025-05-22",
+      "loss_usd": 230000000,
+      "chain": "sui",
+      "protocol_types": [
+        "amm"
+      ],
+      "root_cause_class": "spoof-token-oracle",
+      "playbooks": [
+        "AV-ORACLE-SPOT",
+        "AV-MOVE-CAPABILITY"
+      ],
+      "facts": [
+        "uses_spot_price",
+        "sui_object_or_oracle"
+      ],
+      "summary": "Spoof tokens with negligible liquidity were introduced into Cetus pricing/reserve logic, moving internal curves and draining real reserves.",
+      "lesson": "Price and reserve accounting must reject unknown or illiquid objects. Object-centric chains still need allowlists and liquidity floors.",
+      "references": [
+        "https://rekt.news"
+      ]
+    },
+    {
+      "id": "INC-WORMHOLE-2022",
+      "name": "Wormhole guardian signature bypass",
+      "date": "2022-02-02",
+      "loss_usd": 320000000,
+      "chain": "solana",
+      "protocol_types": [
+        "bridge"
+      ],
+      "root_cause_class": "missing-signature-verification",
+      "playbooks": [
+        "AV-BRIDGE-REPLAY",
+        "AV-SOLANA-SIGNER"
+      ],
+      "facts": [
+        "is_bridge",
+        "solana_missing_signer_or_cpi"
+      ],
+      "summary": "A deprecated verification path accepted a crafted secp256k1 signature and minted 120k wETH without guardian quorum.",
+      "lesson": "Deprecated syscalls and leftover verify paths are live attack surface. Bind the current verifier and fail closed.",
+      "references": [
+        "https://rekt.news/wormhole-rekt/"
+      ]
+    },
+    {
+      "id": "INC-RONIN-2022",
+      "name": "Ronin 5-of-9 validator compromise",
+      "date": "2022-03-23",
+      "loss_usd": 625000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "bridge"
+      ],
+      "root_cause_class": "centralization-of-power",
+      "playbooks": [
+        "AV-BRIDGE-REPLAY"
+      ],
+      "facts": [
+        "is_bridge"
+      ],
+      "summary": "A 5-of-9 validator set was effectively one operator plus a partner. Social engineering collected the threshold.",
+      "lesson": "Count distinct custodians, not validator slots. Threshold math is meaningless if keys share an org.",
+      "references": [
+        "https://rekt.news/ronin-rekt/"
+      ]
+    },
+    {
+      "id": "INC-NOMAD-2022",
+      "name": "Nomad zero trusted root",
+      "date": "2022-08-01",
+      "loss_usd": 190000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "bridge"
+      ],
+      "root_cause_class": "uninitialized-root",
+      "playbooks": [
+        "AV-BRIDGE-REPLAY"
+      ],
+      "facts": [
+        "is_bridge",
+        "missing_message_nullifier"
+      ],
+      "summary": "A replica was initialized so the default bytes32(0) looked like a proven message. Anyone could process arbitrary messages.",
+      "lesson": "Uninitialized mappings equal zero. Zero must never be a valid root, message, or owner.",
+      "references": [
+        "https://rekt.news/nomad-rekt/"
+      ]
+    },
+    {
+      "id": "INC-BEANSTALK-2022",
+      "name": "Beanstalk flash-loan governance",
+      "date": "2022-04-17",
+      "loss_usd": 181000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "governance"
+      ],
+      "root_cause_class": "governance-via-flashloan",
+      "playbooks": [
+        "AV-GOVERNANCE-FLASH"
+      ],
+      "facts": [
+        "is_governance",
+        "votes_not_checkpointed"
+      ],
+      "summary": "Live BEAN balances were voting power and execution had no delay. A flash-loaned BIP drained the treasury.",
+      "lesson": "Snapshot votes at a past block and timelock execution. Emergency pause should not be flash-votable.",
+      "references": [
+        "https://rekt.news/beanstalk-rekt/"
+      ]
+    },
+    {
+      "id": "INC-HARVEST-2020",
+      "name": "Harvest Finance Curve spot share price",
+      "date": "2020-10-26",
+      "loss_usd": 34000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "vault"
+      ],
+      "root_cause_class": "oracle-manipulation",
+      "playbooks": [
+        "AV-ORACLE-SPOT",
+        "AV-FIRST-DEPOSITOR"
+      ],
+      "facts": [
+        "uses_spot_price",
+        "is_share_vault"
+      ],
+      "summary": "Vault share price was a same-tx Curve virtual price. Flash dump, deposit expensive shares, withdraw, restore.",
+      "lesson": "Share price cannot be a single-block AMM read. Use TWAP, independent oracles, or sandwich-resistant valuation.",
+      "references": [
+        "https://rekt.news/harvest-finance-rekt/"
+      ]
+    },
+    {
+      "id": "INC-MANGO-2022",
+      "name": "Mango Markets oracle / MNGO spot",
+      "date": "2022-10-11",
+      "loss_usd": 114000000,
+      "chain": "solana",
+      "protocol_types": [
+        "lending",
+        "derivative"
+      ],
+      "root_cause_class": "oracle-manipulation",
+      "playbooks": [
+        "AV-ORACLE-SPOT",
+        "AV-SOLANA-SIGNER"
+      ],
+      "facts": [
+        "uses_spot_price",
+        "value_depends_on_price"
+      ],
+      "summary": "Thin MNGO spot was moved, inflated borrow power, and drained the protocol. Legal/market-manipulation debate followed; the code trusted a manipulable price.",
+      "lesson": "Collateral listing requires depth, TWAP windows, and open-interest caps. A listed token is not a safe oracle.",
+      "references": [
+        "https://rekt.news/mango-markets-rekt/"
+      ]
+    },
+    {
+      "id": "INC-WINTERMUTE-2022",
+      "name": "Wintermute Profanity / proxy takeover",
+      "date": "2022-09-20",
+      "loss_usd": 160000000,
+      "chain": "ethereum",
+      "protocol_types": [],
+      "root_cause_class": "weak-key-and-proxy",
+      "playbooks": [
+        "AV-PROXY-INIT",
+        "AV-ACCESS-MISSING"
+      ],
+      "facts": [
+        "is_upgradeable",
+        "initializer_unprotected"
+      ],
+      "summary": "A vanity-address generator leaked private-key bits. Combined with proxy/admin assumptions this enabled a large drain.",
+      "lesson": "Vanity address tools and uninitialized admin slots are in scope. Review key-generation as well as Solidity.",
+      "references": [
+        "https://rekt.news/wintermute-rekt/"
+      ]
+    },
+    {
+      "id": "INC-COMPOUND-REWARDS-2021",
+      "name": "Compound Comptroller reward scale",
+      "date": "2021-09-29",
+      "loss_usd": 80000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "lending"
+      ],
+      "root_cause_class": "logic-bug-arithmetic",
+      "playbooks": [
+        "AV-ROUNDING-DIRECTION"
+      ],
+      "facts": [
+        "div_before_mul",
+        "is_lending"
+      ],
+      "summary": "A proposal shipped a 1e36 vs 1e18 scale error and over-distributed COMP. Audited code plus governance still shipped it.",
+      "lesson": "Invariant-test reward index math at the unit-test level. Governance review is not a substitute for a scale-factor check.",
+      "references": [
+        "https://rekt.news/compound-rekt/"
+      ]
+    },
+    {
+      "id": "INC-POLY-2021",
+      "name": "Poly Network hash-then-substitute",
+      "date": "2021-08-10",
+      "loss_usd": 611000000,
+      "chain": "multi",
+      "protocol_types": [
+        "bridge"
+      ],
+      "root_cause_class": "auth-bypass",
+      "playbooks": [
+        "AV-BRIDGE-REPLAY",
+        "AV-SIGNATURE-REPLAY"
+      ],
+      "facts": [
+        "is_bridge",
+        "has_signature_auth"
+      ],
+      "summary": "A header was verified, then a different body field was executed. Cross-chain auth hashed one thing and acted on another.",
+      "lesson": "The bytes that are signed must be the bytes that are executed. No post-verify substitution.",
+      "references": [
+        "https://rekt.news/poly-network-rekt/"
+      ]
+    },
+    {
+      "id": "INC-CASHIO-2022",
+      "name": "Cashio infinite mint via fake collateral",
+      "date": "2022-03-23",
+      "loss_usd": 48000000,
+      "chain": "solana",
+      "protocol_types": [
+        "lending"
+      ],
+      "root_cause_class": "unvalidated-account",
+      "playbooks": [
+        "AV-SOLANA-SIGNER",
+        "AV-SOLANA-ACCOUNT-CONFUSION"
+      ],
+      "facts": [
+        "solana_missing_signer_or_cpi"
+      ],
+      "summary": "Saber LP collateral accounts were not bound to the expected mint/program. A fake account printed CASH.",
+      "lesson": "Every AccountInfo that influences mint/burn must be typed, owned, and mint-constrained.",
+      "references": [
+        "https://rekt.news/cashio-rekt/"
+      ]
+    },
+    {
+      "id": "INC-SHERLOCK-4626-2025",
+      "name": "Sherlock/C4 first-depositor class (2024-2025 contests)",
+      "date": "2025-04-28",
+      "loss_usd": 0,
+      "chain": "ethereum",
+      "protocol_types": [
+        "vault",
+        "staking"
+      ],
+      "root_cause_class": "first-depositor-inflation",
+      "playbooks": [
+        "AV-FIRST-DEPOSITOR",
+        "AV-ROUNDING-DIRECTION"
+      ],
+      "facts": [
+        "is_share_vault",
+        "missing_virtual_shares"
+      ],
+      "summary": "Pareto, BakerFi, Burve and many other contest vaults still shipped ERC-4626 share math without virtual offsets. Attackers donate, victims mint zero shares.",
+      "lesson": "This class is not theoretical. Default OZ ERC4626 offsets or burned dead shares are mandatory.",
+      "references": [
+        "https://github.com/sherlock-audit/2025-04-pareto-contest-judging/issues/119",
+        "https://github.com/code-423n4/2024-05-bakerfi-findings/issues/39"
+      ]
+    },
+    {
+      "id": "INC-IMMUNEFI-SHIFT-2025",
+      "name": "Immunefi 2025: protocol-logic now dominates losses",
+      "date": "2025-12-31",
+      "loss_usd": 680300000,
+      "chain": "multi",
+      "protocol_types": [],
+      "root_cause_class": "protocol-specific-logic",
+      "playbooks": [
+        "AV-FIRST-DEPOSITOR",
+        "AV-ORACLE-SPOT",
+        "AV-REENTRANCY-CLASSIC"
+      ],
+      "facts": [],
+      "summary": "Immunefi reported DeFi losses of $680.3M in 2025. Bridge share of losses fell to ~3%. Flash-loan-as-primary-vector is now <1%. Protocol-specific business logic was ~89% of remaining DeFi losses.",
+      "lesson": "Generic reentrancy/oracle scanners are table stakes. The remaining risk is invariant and integration review \u2014 which is why SELF autonomous exists.",
+      "references": [
+        "https://www.fxstreet.com/cryptocurrencies/news/defi-hack-losses-drop-80-from-2022-peak-as-security-defenses-improve-immunefi-202606050020"
+      ]
+    },
+    {
+      "id": "INC-LENDF-ERC777-2020",
+      "name": "Lendf.Me ERC777 tokensToSend",
+      "date": "2020-04-19",
+      "loss_usd": 25000000,
+      "chain": "ethereum",
+      "protocol_types": [
+        "lending"
+      ],
+      "root_cause_class": "token-hook-reentrancy",
+      "playbooks": [
+        "AV-REENTRANCY-CLASSIC",
+        "AV-FEE-ON-TRANSFER"
+      ],
+      "facts": [
+        "external_call_before_write",
+        "is_lending"
+      ],
+      "summary": "A Compound fork accepted ERC777. tokensToSend re-entered supply() before accounting settled.",
+      "lesson": "Token standards are callbacks. Assume transfer/transferFrom can re-enter unless the token is allowlisted and hook-free.",
+      "references": [
+        "https://rekt.news/lendf-me-rekt/"
+      ]
+    },
+    {
+      "id": "INC-C4-NEXTGEN-DOMAIN-2025",
+      "name": "Next Generation caller-supplied domainSeparator",
+      "date": "2025-01-01",
+      "loss_usd": 0,
+      "chain": "multi",
+      "protocol_types": [
+        "token",
+        "bridge"
+      ],
+      "root_cause_class": "user-supplied-domain-separator",
+      "playbooks": [
+        "AV-DOMAIN-SEPARATOR-ARG",
+        "AV-SIGNATURE-REPLAY"
+      ],
+      "facts": [
+        "user_supplied_domain_separator",
+        "has_signature_auth"
+      ],
+      "summary": "A GSN-style Forwarder hashed keccak256(abi.encodePacked('\\x19\\x01', domainSeparator, structHash)) where domainSeparator was a function argument. Signatures were not bound to chainId or verifyingContract on-chain.",
+      "lesson": "Never take domainSeparator from the caller. Derive EIP-712 name, version, chainId, and verifyingContract inside the contract. Also require a deadline on every forwarded request.",
+      "references": [
+        "https://code4rena.com/reports/2025-01-next-generation"
+      ]
+    },
+    {
+      "id": "INC-C4-BAKERFI-ORACLE-2024",
+      "name": "BakerFi ETH/USD 8-dec treated as 1e18",
+      "date": "2024-05-01",
+      "loss_usd": 0,
+      "chain": "ethereum",
+      "protocol_types": [
+        "vault",
+        "lending"
+      ],
+      "root_cause_class": "oracle-decimal-mismatch",
+      "playbooks": [
+        "AV-ORACLE-DECIMALS"
+      ],
+      "facts": [
+        "oracle_decimal_mismatch",
+        "uses_chainlink_like"
+      ],
+      "summary": "EthOracle.getPrecision() returned 1e18 while the Chainlink ETH/USD aggregator answers with 8 decimals. Vault share math was off by 10^10.",
+      "lesson": "When wrapping AggregatorV3, always scale answer by 10 ** (targetDecimals - feed.decimals()). A hardcoded 1e18 is only safe if the feed is also 18 decimals.",
+      "references": [
+        "https://code4rena.com/reports/2024-05-bakerfi"
+      ]
+    },
+    {
+      "id": "INC-C4-REVERT-PERMIT2-2024",
+      "name": "Revert Lend Permit2 token not bound to USDC",
+      "date": "2024-03-01",
+      "loss_usd": 0,
+      "chain": "ethereum",
+      "protocol_types": [
+        "lending"
+      ],
+      "root_cause_class": "permit2-token-unbound",
+      "playbooks": [
+        "AV-PERMIT2"
+      ],
+      "facts": [
+        "permit2_token_unbound",
+        "uses_permit2"
+      ],
+      "summary": "V3Vault accepted Permit2 permitData and called permitTransferFrom without checking that the permitted token was the vault asset (USDC).",
+      "lesson": "Every Permit2 helper must require permit.permitted.token == expectedAsset before transferring. Signature validity is not token validity.",
+      "references": [
+        "https://code4rena.com/reports/2024-03-revert-lend"
+      ]
+    },
+    {
+      "id": "INC-C4-FRAX-BADDEBT-2022",
+      "name": "Fraxlend liquidate leaves bad debt unmarked",
+      "date": "2022-08-01",
+      "loss_usd": 0,
+      "chain": "ethereum",
+      "protocol_types": [
+        "lending"
+      ],
+      "root_cause_class": "bad-debt-unmarked",
+      "playbooks": [
+        "AV-BAD-DEBT-UNMARKED",
+        "AV-LIQUIDATION-SELF"
+      ],
+      "facts": [
+        "is_lending",
+        "liquidation_unrestricted"
+      ],
+      "summary": "Repeating liquidate() on an already-insolvent borrower, or never writing off leftover debt, locked the pair or socialized the loss onto the last lender.",
+      "lesson": "A full liquidation must zero the borrower's debt shares. If collateral is insufficient, mark bad debt explicitly instead of leaving a zombie position.",
+      "references": [
+        "https://code4rena.com/reports/2022-08-frax"
+      ]
+    }
+  ]
+}

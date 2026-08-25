@@ -1,15 +1,23 @@
 # SELF — Smart Contract Exploit & Logic Finder
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
-[![Version](https://img.shields.io/badge/Version-2.3.0-red)](VERSION)
+[![Version](https://img.shields.io/badge/Version-2.4.0-red)](VERSION)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Offline](https://img.shields.io/badge/Scans-Offline-blueviolet)](SECURITY.md)
 [![Repo](https://img.shields.io/badge/Repo-GitHub-black)](https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool)
 
 SELF is a **local, deterministic, offline-first** smart-contract auditor for
-Solidity, Vyper, Huff, Rust/Anchor, and Move. It is designed to be the
-first pass a security researcher runs before opening a Foundry test, an
-Echidna campaign, a Slither run, or a manual review.
+Solidity, Vyper, Huff, Rust/Anchor, Move, and (in autonomous mode) Cairo,
+Sway, and Tact. It is designed to be the first pass a security researcher
+runs before opening a Foundry test, an Echidna campaign, a Slither run, or
+a manual review.
+
+v2.4 adds an **autonomous AI auditor** (`self autonomous` / `self agent`)
+that reads the entire project, trains a local knowledge index on real
+exploit data, reasons about business logic / math / on-chain behaviour,
+walks multi-hop exploit paths, and checks dependency versions. An optional
+`--llm` flag can refine that pass with OpenAI, Anthropic, or Ollama. The
+original `self TARGET` scan stays offline, deterministic, and LLM-free.
 
 SELF ships:
 
@@ -43,6 +51,10 @@ SELF ships:
 - A **PoC harness generator** (`self --poc`) that emits runnable Foundry
   test files for every exploit-class detector that fires, with output
   paths confined to the scan target directory.
+- An **autonomous AI auditor** (`self autonomous`) that trains on the
+  real-incident corpus, reads the whole repository, reasons about
+  business logic / math / on-chain behaviour, synthesizes exploit
+  paths, and checks dependency versions. Optional `--llm` refinement.
 
 SELF does **not** claim to replace a manual audit. It is a triage tool. The
 question it answers is "which lines of code deserve a closer look, and what
@@ -59,20 +71,21 @@ never reach zero.
 3. [Command reference](#command-reference)
 4. [Output formats](#output-formats)
 5. [Detection model](#detection-model)
-6. [Project semantic graph](#project-semantic-graph)
-7. [Feedback store](#feedback-store)
-8. [Calibration](#calibration)
-9. [Advisory updater](#advisory-updater)
-10. [X-ray pre-audit](#x-ray-pre-audit)
-11. [Fuzzing](#fuzzing)
-12. [PoC generation](#poc-generation)
-13. [Custom rules](#custom-rules)
-14. [Configuration and storage](#configuration-and-storage)
-15. [Exit codes](#exit-codes)
-16. [CI integration](#ci-integration)
-17. [Limits and honest boundaries](#limits-and-honest-boundaries)
-18. [Contributing](#contributing)
-19. [License](#license)
+6. [Autonomous AI auditor](#autonomous-ai-auditor)
+7. [Project semantic graph](#project-semantic-graph)
+8. [Feedback store](#feedback-store)
+9. [Calibration](#calibration)
+10. [Advisory updater](#advisory-updater)
+11. [X-ray pre-audit](#x-ray-pre-audit)
+12. [Fuzzing](#fuzzing)
+13. [PoC generation](#poc-generation)
+14. [Custom rules](#custom-rules)
+15. [Configuration and storage](#configuration-and-storage)
+16. [Exit codes](#exit-codes)
+17. [CI integration](#ci-integration)
+18. [Limits and honest boundaries](#limits-and-honest-boundaries)
+19. [Contributing](#contributing)
+20. [License](#license)
 
 ---
 
@@ -87,7 +100,7 @@ python3 -m pip install -e .
 Verify:
 
 ```bash
-self --version              # 2.3.0
+self --version              # 2.4.0
 self --list-detectors       # full detector catalog
 self --knowledge-status     # OWASP coverage + knowledge sources
 ```
@@ -133,6 +146,16 @@ self calibrate
 # Pull the latest pinned advisory metadata.
 self update --manifest-url https://scs.owasp.org/feed.json
 
+# Autonomous AI audit: read the whole project, reason, check deps.
+self autonomous .
+self autonomous src/ --json -o reports/autonomous.md
+
+# Train / refresh the local knowledge index on the bundled
+# exploit corpus, or on extra audit-report JSON you provide.
+self train
+self train extra-exploits.json
+self train --status
+
 # List, add, export, import local feedback entries.
 self feedback list .
 self feedback add . --finding sf_xxx --type false_positive --reason "uses SafeERC20"
@@ -140,8 +163,10 @@ self feedback export ./feedback.json
 self feedback import ./feedback.json
 ```
 
-Every command runs without network access except `self update` and
-`self intelligence rollback`. See [SECURITY.md](SECURITY.md).
+Every command runs without network access except `self update`,
+`self intelligence rollback`, the opt-in `self autonomous --llm`,
+and the opt-in `self autonomous --online` (fetch inventoried doc links
++ OSV dependency lookup). See [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -161,6 +186,9 @@ self feedback remove FEEDBACK_ID
 self feedback export FILE                    # write local store as JSON
 self feedback import FILE [--replace]       # merge or replace local store
 self calibrate [--root DIR] [--json]        # confusion-matrix report
+self autonomous TARGET [--llm] [--online] [--json]  # autonomous AI audit
+self agent TARGET                           # alias of autonomous
+self train [EXTRA.json ...] [--status]      # train local knowledge index
 ```
 
 ### Scan flags
@@ -201,7 +229,7 @@ automatically re-surfaces the finding.
 ### Terminal summary
 
 ```
-SELF v2.3.0  scan of  /home/auditor/repo
+SELF v2.4.0  scan of  /home/auditor/repo
 CRITICAL findings   : 1
 HIGH      findings   : 4
 MEDIUM    findings   : 9
@@ -228,7 +256,7 @@ The Markdown report contains:
 
 ```json
 {
-  "version": "2.3.0",
+  "version": "2.4.0",
   "target": "/home/auditor/repo",
   "framework": "foundry",
   "project_fingerprint": "pf_…",
@@ -290,8 +318,73 @@ the authoritative source of truth.
 | Move | yes | — | capability, signer, resource invariants |
 | TypeScript | scanner matches | — | reserved for Hardhat scripts (no detectors yet) |
 
-Cairo (Starknet), Stylus (Arbitrum), Sway (Fuel), and Tact (TON) are not
-yet supported. Contributions welcome.
+Cairo (Starknet), Sway (Fuel), and Tact (TON) are ingested and reasoned
+about in `self autonomous`. They do not yet have per-file detector
+packs. Stylus is covered through the Rust parser. Contributions welcome.
+
+---
+
+## Autonomous AI auditor
+
+```bash
+self autonomous .
+self agent src/Vault.sol --json
+self autonomous . --llm --llm-provider ollama
+self train
+self train reports/extra-exploits.json
+self train --status
+```
+
+`self autonomous` (alias `self agent`) is a project-wide reasoning pass
+on top of the deterministic engine. It is **not** imported by `self .`,
+so a normal scan stays offline and free of optional AI code.
+
+What it does:
+
+1. **Reads the entire project** — source in Solidity, Vyper, Huff,
+   Rust/Anchor, Move, plus Cairo / Sway / Tact in this mode; README,
+   docs, Foundry/Hardhat/Anchor/Move/Cargo/npm manifests and lockfiles.
+2. **Understands the protocol** — type (AMM, lending, vault, bridge,
+   governance, …), contract roles, token flows, privileged vs
+   permissionless surfaces, extracted guards, and matched math models
+   (`x*y=k`, ERC-4626 shares, health factor, funding, …).
+3. **Trains on real data** — `self train` builds a local retrieval
+   index from the bundled exploit corpus, attack-vector playbooks,
+   language semantics, business-logic invariants, on-chain behaviours,
+   recent public incident post-mortems (`incidents.json`: Euler,
+   KyberSwap, Prisma, Penpie, Cetus, Immunefi 2025 shift, …), expert
+   review tactics (`expert_tactics.json`: Trail of Bits, Pashov,
+   Spearbit, OpenZeppelin, Sherlock/C4, Immunefi, Solodit), and
+   optional extra JSON. Confirmed / false-positive feedback reweights
+   playbooks. First `self autonomous` run trains automatically if no
+   index exists. Prefer new incidents/tactics over new `exploits.json`
+   detectors so catalog ↔ review-profile parity stays intact.
+4. **Reasons about exploitability** — trained playbooks fire only when
+   language, protocol type, source patterns, and computed facts all
+   agree. Static detector hits corroborate and raise confidence.
+5. **Walks multi-hop paths** — reentrancy drains, flash-loan oracle
+   manipulation, first-depositor inflation, initialize takeovers,
+   bridge replays, sandwiches, flash-loaned governance, Euler-style
+   donate-then-self-liquidate, Penpie-style fake-market harvest, Prisma
+   zap callbacks, and Kyber-style tick double-counts.
+6. **Checks dependency versions** against a local advisory brain
+   (Vyper compiler ranges, OpenZeppelin GHSA windows, Anchor, solmate,
+   SPL token, …). Metadata only; nothing is executed.
+7. **Acknowledges project documentation** — README links, `audits/*.pdf`,
+   Spearbit/OpenZeppelin markdown, `scope.txt`. Those facts stay in the
+   briefing even when offline. `self autonomous --online` then fetches
+   the inventoried `https://` links (SSRF-safe, size-capped) and queries
+   [OSV.dev](https://osv.dev) for pinned npm / PyPI / crates.io versions.
+
+The default reasoner is symbolic and fully offline. `--online` and
+`--llm` are separate opt-in flags. `--llm` requires `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, or `OLLAMA_HOST`. LLM findings are labelled
+`AUTO-LLM-*`, confidence Low, and must cite a file that actually exists
+in the project.
+
+Report: `self-autonomous.md` (and `.json` with `--json`). Finding IDs
+use the `AUTO-*` prefix and do not go through the detector catalog —
+they carry their own proof obligation.
 
 ---
 
@@ -523,6 +616,7 @@ Startup fails if the catalog and profile table drift apart.
 | `~/.self-auditor/audit.log.jsonl` | Append-only event log (install, rollback, feedback, suppression). |
 | `~/.self-auditor/intelligence/<snapshot_id>/` | Installed advisory snapshots. |
 | `~/.self-auditor/intelligence/latest` | Active snapshot pointer (symlink or text). |
+| `~/.self-auditor/brain/index.json` | Trained autonomous knowledge index. |
 
 Override the data directory with `SELF_DATA_DIR`.
 
@@ -585,10 +679,10 @@ A `Severity: high` step fails the build on High or Critical findings.
   inherited or interprocedural effects.
 - New attack classes require maintained rules, tests, and source review.
 
-SELF is offline by default. The only commands that open a network
-connection are `self update` and `self intelligence rollback`, and they
-are explicitly opt-in, HTTPS-only, host-allowlisted, size/time-limited,
-and content-hash-verified.
+SELF is offline by default. Network access is explicit and opt-in:
+`self update` / `self intelligence rollback` (allowlisted advisory
+snapshots), `self autonomous --online` (project-doc links + OSV), and
+`self autonomous --llm` (user-configured model endpoint).
 
 The fuzzing pass is structural: Hypothesis-based property testing on
 parsed contract structure and a modeled state-machine sequence fuzzer.

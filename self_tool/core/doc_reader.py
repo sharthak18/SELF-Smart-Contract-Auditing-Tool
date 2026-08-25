@@ -16,8 +16,13 @@ This runs before any detector — it builds the "brain" that makes SELF smart.
 import os
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
 
+from self_tool.core.local_docs import (
+    extract_pdf_text,
+    extract_urls,
+    list_prior_audit_files,
+)
 from self_tool.core.protocol_context import ProtocolContext
 
 
@@ -103,12 +108,83 @@ NATSPEC_SUPPRESS_TAGS = {
 }
 
 
+# Map sponsor-declared known issues onto autonomous playbooks so the
+# reasoner can keep them in mind instead of re-reporting accepted risk.
+KNOWN_ISSUE_PLAYBOOKS: List[Tuple[str, List[str]]] = [
+    (r"first.?deposit|donation.?inflation|virtual.?share|yieldbuffer|donate assets equal",
+     ["AV-FIRST-DEPOSITOR"]),
+    (r"storage gap|storage collision",
+     ["AV-STORAGE-COLLISION"]),
+    (r"fee-?on-?transfer|fees on transfer|rebasing|does not support (fot|fee)|no fee-on-transfer",
+     ["AV-FEE-ON-TRANSFER"]),
+    (r"sequencer|l2 downtime",
+     ["AV-L2-SEQUENCER"]),
+    (r"create2|metamorphic",
+     ["AV-CREATE2-METAMORPHIC"]),
+    (r"misconfigured oracle|oracle(s)? (are )?trusted|no fallback oracle|"
+     r"chainlink reports a wrong price|spot (amm )?oracle|"
+     r"oracles and normalization|choose oracles and oracle normalization",
+     ["AV-ORACLE-SPOT"]),
+    (r"outdated answers|stale (price|oracle|answer)|heartbeat",
+     ["AV-L2-SEQUENCER"]),
+    (r"rounding error|precision loss|due to rounding",
+     ["AV-ROUNDING-DIRECTION"]),
+    (r"centralization risk|admin is trusted|owner is trusted|trusted role",
+     ["AV-GOVERNANCE-FLASH"]),
+]
+
+CONTEST_DOC_NAMES = (
+    "README.md", "README-sponsor.md", "README.rst", "README.txt", "README",
+    "WHITEPAPER.md", "whitepaper.md",
+    "SECURITY.md", "security.md",
+    "ARCHITECTURE.md", "architecture.md",
+    "DESIGN.md", "design.md",
+    "scope.txt", "out_of_scope.txt",
+)
+
+
+def resolve_docs_root(project_root: str) -> Path:
+    """Walk up so `self autonomous contracts` prefers the contest README over a nested package README."""
+    start = Path(project_root).resolve()
+    cur = start if start.is_dir() else start.parent
+    ranked = []
+    for _ in range(6):
+        score = 0
+        if (cur / "scope.txt").is_file() or (cur / "out_of_scope.txt").is_file():
+            score += 6
+        if (cur / "README-sponsor.md").is_file():
+            score += 3
+        readme = cur / "README.md"
+        if readme.is_file():
+            score += 1
+            try:
+                head = readme.read_text(encoding="utf-8", errors="replace")[:12000].lower()
+            except OSError:
+                head = ""
+            if any(token in head for token in (
+                "known issue", "publicly known", "trusted role", "files in scope",
+                "out of scope", "warden",
+            )):
+                score += 6
+        if score:
+            ranked.append((score, len(str(cur)), cur))
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    if not ranked:
+        return start
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return ranked[0][2]
+
+
 class DocReader:
     """Reads project documentation and source NatSpec to build a ProtocolContext."""
 
     def __init__(self, project_root: str):
-        self.root = Path(project_root).resolve()
+        requested = Path(project_root).resolve()
+        self.root = resolve_docs_root(str(requested))
         self.ctx = ProtocolContext()
+        self.ctx.docs_root = str(self.root)
 
     def build(self) -> ProtocolContext:
         """Full pipeline: read all docs → extract signals → return context."""
@@ -116,6 +192,7 @@ class DocReader:
         self._read_source_natspec()
         self._read_source_imports()
         self._detect_protocol_type()
+        self._extract_contest_brief()
         self.ctx.build_suppressions()
         return self.ctx
 
@@ -123,22 +200,18 @@ class DocReader:
 
     def _read_doc_files(self):
         """Read README, docs/, WHITEPAPER, SECURITY, audit reports."""
-        doc_candidates = [
-            'README.md', 'README.rst', 'README.txt', 'README',
-            'WHITEPAPER.md', 'whitepaper.md', 'Whitepaper.md',
-            'SECURITY.md', 'security.md',
-            'ARCHITECTURE.md', 'architecture.md',
-            'DESIGN.md', 'design.md',
-        ]
+        doc_candidates = list(CONTEST_DOC_NAMES)
 
         all_text = []
         security_text = []
+        self._doc_blobs: List[Tuple[str, str]] = []
 
         for fname in doc_candidates:
             fpath = self.root / fname
             if fpath.exists():
                 text = self._safe_read(fpath)
                 all_text.append(text)
+                self._doc_blobs.append((fname, text))
                 if 'SECURITY' in fname.upper() or 'security' in fname.lower():
                     security_text.append(text)
 
@@ -150,18 +223,43 @@ class DocReader:
                     text = self._safe_read(md_file)
                     all_text.append(text)
 
-        # audits/ directory
+        # audits/ + reports/: markdown, html, and PDF text
         for audit_dir in ['audits', 'audit', 'reports', 'security']:
             audit_path = self.root / audit_dir
             if audit_path.is_dir():
-                for audit_file in audit_path.rglob('*.md'):
-                    text = self._safe_read(audit_file)
-                    all_text.append(text)
-                    self.ctx.has_audit_history = True
+                for audit_file in sorted(audit_path.rglob('*')):
+                    if not audit_file.is_file():
+                        continue
+                    suffix = audit_file.suffix.lower()
+                    if suffix == '.pdf':
+                        try:
+                            extracted = extract_pdf_text(audit_file.read_bytes())
+                        except OSError:
+                            extracted = ""
+                        if extracted:
+                            all_text.append(extracted)
+                            self._doc_blobs.append((str(audit_file.relative_to(self.root)), extracted))
+                            self.ctx.has_audit_history = True
+                    elif suffix in {'.md', '.txt', '.html'}:
+                        extracted = self._safe_read(audit_file)
+                        all_text.append(extracted)
+                        self._doc_blobs.append((str(audit_file.relative_to(self.root)), extracted))
+                        self.ctx.has_audit_history = True
+
+        # Inventory links and local prior-audit files (offline acknowledge).
+        joined = "\n\n".join(all_text)
+        for url in extract_urls(joined):
+            if url not in self.ctx.referenced_urls:
+                self.ctx.referenced_urls.append(url)
+        self.ctx.local_audit_files = list_prior_audit_files(self.root)
+        if self.ctx.local_audit_files:
+            self.ctx.has_audit_history = True
 
         combined = ' '.join(all_text).lower()
-        self.ctx.readme_content = combined[:5000]  # Bound stored report context
-        self.ctx.security_notes = ' '.join(security_text)[:2000]
+        self.ctx.readme_content = combined[:20000]
+        self.ctx.security_notes = ' '.join(security_text)[:4000]
+        if all_text:
+            self.ctx.docs_read = True
 
         # Extract protocol name from README h1
         for text in all_text:
@@ -269,7 +367,7 @@ class DocReader:
         Scan import statements across all Solidity files.
         SafeERC20, ReentrancyGuard, Ownable2Step etc. provide strong signals.
         """
-        sol_files = list(self.root.rglob('*.sol'))
+        sol_files = [f for f in self.root.rglob('*.sol') if f.is_file()]
         # Limit to avoid scanning node_modules
         sol_files = [f for f in sol_files if 'node_modules' not in str(f)
                      and 'lib/' not in str(f) and 'out/' not in str(f)]
@@ -323,14 +421,316 @@ class DocReader:
         if scores[best] > 0:
             self.ctx.protocol_type = best
 
+    def _extract_contest_brief(self):
+        """Parse C4/Sherlock-style README sections and scope.txt files."""
+        blobs = list(getattr(self, "_doc_blobs", []) or [])
+        full = "\n\n".join(text for _, text in blobs)
+        if not full.strip():
+            return
+
+        known_section = "\n\n".join(_all_sections(full, (
+            "automated findings", "publicly known issues", "publicly known issue",
+            "known issues", "known issue", "known limitations",
+        )))
+        for bullet in _known_issue_items(known_section):
+            if _is_boilerplate_known_issue(bullet):
+                continue
+            if bullet not in self.ctx.known_issues:
+                self.ctx.known_issues.append(bullet[:400])
+
+        trust_section = _first_section(full, (
+            "all trusted roles in the protocol", "trusted roles",
+        ))
+        for role, note in _role_rows(trust_section):
+            if role not in self.ctx.trusted_roles:
+                self.ctx.trusted_roles.append(role)
+            if note:
+                self.ctx.trusted_role_notes.append(f"{role}: {note[:240]}")
+        for match in re.finditer(
+            r"roles? in the protocol\s*:\s*(.+)", full, re.IGNORECASE,
+        ):
+            blob = match.group(1)
+            for piece in re.split(r",|;", blob):
+                name = piece.split("(")[0].split("which")[0].strip(" .)")
+                if _plausible_role(name) and name not in self.ctx.trusted_roles:
+                    self.ctx.trusted_roles.append(name)
+
+        oos_section = _first_section(full, (
+            "files out of scope", "out of scope",
+        ))
+        for path in _paths_from_text(oos_section):
+            _append_unique(self.ctx.out_of_scope_files, path)
+        in_section = _first_section(full, (
+            "files in scope",
+        ))
+        for path in _paths_from_text(in_section):
+            _append_unique(self.ctx.in_scope_files, path)
+
+        for name, blob in blobs:
+            lowered = name.lower()
+            if lowered.endswith("out_of_scope.txt"):
+                for path in _paths_from_text(blob):
+                    _append_unique(self.ctx.out_of_scope_files, path)
+            elif lowered.endswith("scope.txt") and "out_of_scope" not in lowered:
+                for path in _paths_from_text(blob):
+                    _append_unique(self.ctx.in_scope_files, path)
+
+        accepted = []
+        hay = "\n".join(self.ctx.known_issues).lower() + "\n" + (known_section or "").lower()
+        extra = _first_section(full, ("additional context", "assumptions"))
+        if re.search(
+            r"fee-on-transfer or rebasing tokens are not supported|"
+            r"does not support rebasing/fee-on-transfer",
+            extra, re.I,
+        ):
+            hay += "\nfee-on-transfer tokens are not supported"
+        for pattern, playbooks in KNOWN_ISSUE_PLAYBOOKS:
+            if re.search(pattern, hay, re.IGNORECASE):
+                for playbook in playbooks:
+                    if playbook not in accepted:
+                        accepted.append(playbook)
+        self.ctx.accepted_playbooks = accepted
+
     # ── Utility ───────────────────────────────────────────────────────────
 
     @staticmethod
     def _safe_read(path: Path) -> str:
-        return path.read_text(encoding='utf-8', errors='replace')
+        if not path.is_file():
+            return ""
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+
+def _first_section(text: str, titles):
+    sections = _all_sections(text, titles)
+    return sections[0] if sections else ""
+
+
+def _all_sections(text: str, titles):
+    heading = re.compile(r"^(#{1,4})\s+(.+?)\s*$", re.MULTILINE)
+    matches = list(heading.finditer(text))
+    found = []
+    for index, match in enumerate(matches):
+        title = match.group(2).strip().lower()
+        if not any(needle in title for needle in titles):
+            continue
+        level = len(match.group(1))
+        start = match.end()
+        end = len(text)
+        for later in matches[index + 1:]:
+            if len(later.group(1)) <= level:
+                end = later.start()
+                break
+        found.append(text[start:end])
+    return found
+
+
+def _bullets(section: str):
+    items = []
+    for raw in (section or "").splitlines():
+        line = raw.strip()
+        if line.startswith(("-", "*", "+")):
+            text = line.lstrip("-*+ ").strip()
+            if text:
+                items.append(text)
+    return items
+
+
+def _is_boilerplate_known_issue(text: str) -> bool:
+    lower = text.lower()
+    if "4naly3er" in lower or "bot-report" in lower:
+        return True
+    if "ineligible for awards" in lower:
+        return True
+    if lower.startswith("http") or lower.startswith("[here]"):
+        return True
+    return False
+
+
+def _role_rows(section: str):
+    rows = []
+    for raw in (section or "").splitlines():
+        line = raw.strip()
+        if line.startswith("|"):
+            cols = [col.strip().strip("`*") for col in line.strip("|").split("|")]
+            if not cols:
+                continue
+            name = cols[0]
+            if not _plausible_role(name):
+                continue
+            note = cols[1] if len(cols) > 1 else ""
+            rows.append((name, note))
+            continue
+        if line.startswith(("-", "*", "+")):
+            text = line.lstrip("-*+ ").strip()
+            name = text.split(":")[0].split("—")[0].strip()
+            if _plausible_role(name):
+                rows.append((name, text))
+    return rows
+
+
+def _plausible_role(name: str) -> bool:
+    if not name or set(name) <= set("-: "):
+        return False
+    if name.lower() in {"role", "name", "actor", "file", "description"}:
+        return False
+    if len(name) > 48 or name.endswith("?"):
+        return False
+    if name.lower().startswith((
+        "how ", "what ", "is ", "does ", "if ", "the ", "any ", "only ",
+        "check ", "please ", "total ",
+    )):
+        return False
+    if "http" in name.lower() or "`" in name:
+        return False
+    if "_" in name and name.replace("_", "").isalnum():
+        return True
+    words = name.replace("_", " ").split()
+    if len(words) > 3:
+        return False
+    return True
+
+
+def _known_issue_items(section: str):
+    items = _bullets(section)
+    if items:
+        return items
+    collected = []
+    current = []
+    for raw in (section or "").splitlines():
+        line = raw.strip()
+        if line.startswith("###"):
+            if current:
+                collected.append(" ".join(current))
+            current = [line.lstrip("# ").strip()]
+        elif line.startswith("#"):
+            if current:
+                collected.append(" ".join(current))
+            current = []
+        elif line:
+            if current:
+                current.append(line)
+            elif len(line) > 40:
+                current = [line]
+    if current:
+        collected.append(" ".join(current))
+    return [item[:400] for item in collected if item]
+
+
+def _paths_from_text(text: str):
+    found = []
+    for raw in (text or "").splitlines():
+        line = raw.strip().strip("|").strip()
+        if not line or line.startswith("#") or set(line) <= set("-: |"):
+            continue
+        cell = line.split("|")[0].strip().strip("`*")
+        cell = re.sub(r"^\[.*?\]\((.*?)\)$", r"\1", cell)
+        cell = cell.split()[0] if cell else ""
+        cell = cell.strip(".,;()[]")
+        if _looks_like_source_path(cell):
+            _append_unique(found, cell.lstrip("./"))
+    for match in re.finditer(r"(?:\./)?[\w./-]+\.(?:sol|vy|rs|move|cairo)", text or ""):
+        _append_unique(found, match.group(0))
+    return found
+
+
+def _looks_like_source_path(value: str) -> bool:
+    if not value or " " in value or len(value) > 240:
+        return False
+    lower = value.lower()
+    return lower.endswith((".sol", ".vy", ".rs", ".move", ".cairo")) or "/" in value
+
+
+def _append_unique(bucket, value: str) -> None:
+    value = value.strip()
+    if value and value not in bucket:
+        bucket.append(value)
+
+
+def path_is_listed(path: str, listed: Sequence[str]) -> bool:
+    """True if a scanned relative path matches a scope.txt / out_of_scope entry."""
+    cand = _norm_doc_path(path)
+    if not cand:
+        return False
+    cand_parts = [part for part in cand.split("/") if part]
+    for raw in listed or []:
+        item = _norm_doc_path(raw)
+        if not item:
+            continue
+        item_parts = [part for part in item.split("/") if part]
+        if not item_parts:
+            continue
+        if cand == item or cand.endswith("/" + item) or item.endswith("/" + cand):
+            return True
+        if len(item_parts) >= 2 and cand_parts[-len(item_parts):] == item_parts:
+            return True
+        if item_parts[-1] == cand_parts[-1] and any(
+            marker in item for marker in ("mock", "interface", "test/", "script/", "lib/")
+        ):
+            return True
+    return False
+
+
+def _norm_doc_path(path: str) -> str:
+    return (path or "").replace("\\", "/").lstrip("./").strip().lower()
 
 
 def build_protocol_context(project_root: str) -> ProtocolContext:
     """Entry point — build ProtocolContext from a project root directory."""
     reader = DocReader(project_root)
     return reader.build()
+
+
+def merge_brief_from_text(ctx: ProtocolContext, text: str) -> None:
+    """Fold extra documentation (fetched pages, PDFs) into an existing brief.
+
+    Known-issue / role / OOS extraction is additive. Accepted playbooks are
+    only remapped from *this* text when it looks like a sponsor Known Issues
+    section — random blog posts do not silently accept risk.
+    """
+    if not (text or "").strip() or ctx is None:
+        return
+    from self_tool.core.local_docs import extract_urls as _urls
+
+    for url in _urls(text):
+        if url not in ctx.referenced_urls:
+            ctx.referenced_urls.append(url)
+
+    known_section = "\n\n".join(_all_sections(text, (
+        "automated findings", "publicly known issues", "publicly known issue",
+        "known issues", "known issue", "known limitations",
+    )))
+    for bullet in _known_issue_items(known_section):
+        if _is_boilerplate_known_issue(bullet):
+            continue
+        if bullet not in ctx.known_issues:
+            ctx.known_issues.append(bullet[:400])
+
+    trust_section = _first_section(text, (
+        "all trusted roles in the protocol", "trusted roles",
+    ))
+    for role, note in _role_rows(trust_section):
+        if role not in ctx.trusted_roles:
+            ctx.trusted_roles.append(role)
+        if note:
+            ctx.trusted_role_notes.append(f"{role}: {note[:240]}")
+
+    oos_section = _first_section(text, ("files out of scope", "out of scope"))
+    for path in _paths_from_text(oos_section):
+        _append_unique(ctx.out_of_scope_files, path)
+
+    if known_section.strip():
+        hay = "\n".join(ctx.known_issues).lower() + "\n" + known_section.lower()
+        for pattern, playbooks in KNOWN_ISSUE_PLAYBOOKS:
+            if re.search(pattern, hay, re.IGNORECASE):
+                for playbook in playbooks:
+                    if playbook not in ctx.accepted_playbooks:
+                        ctx.accepted_playbooks.append(playbook)
+
+    ctx.has_audit_history = ctx.has_audit_history or bool(
+        re.search(r"audit report|audited by|security review", text, re.I)
+    )
+    if not ctx.docs_read and text.strip():
+        ctx.docs_read = True

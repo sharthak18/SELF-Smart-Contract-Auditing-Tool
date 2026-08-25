@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "kind": "business_logic",
+  "reviewed_at": "2026-08-25",
+  "protocols": [
+    {
+      "id": "amm",
+      "name": "Automated market maker",
+      "must_hold": [
+        "Swaps cannot decrease the configured invariant after fees",
+        "Users set minOut/maxIn and a deadline",
+        "Donations cannot steal existing LPs",
+        "First mint cannot be inflated"
+      ],
+      "common_breaks": [
+        "Router without slippage",
+        "Spot price as oracle",
+        "Fee-on-transfer reserve desync",
+        "Read-only reentrancy on virtual price",
+        "CLAMM tick-boundary double-count (KyberSwap Elastic)",
+        "Spoof / illiquid tokens moving an internal price curve (Cetus class)"
+      ],
+      "entry_verbs": ["swap", "addLiquidity", "removeLiquidity", "mint", "burn", "exchange", "zap"]
+    },
+    {
+      "id": "lending",
+      "name": "Lending / money market",
+      "must_hold": [
+        "Borrow power uses a fresh, manipulation-resistant price",
+        "Accrual happens before every balance change",
+        "Liquidations cannot be self-dealt for profit",
+        "Bad debt is recognized and cannot brick solvent users",
+        "Donation and reserve paths run the same health check as withdraw"
+      ],
+      "common_breaks": [
+        "Spot or stale oracle",
+        "Missing accrue on liquidate",
+        "Empty-market donation inflation",
+        "Same-asset collateral/debt loops",
+        "donateToReserves skipping account health (Euler 2023)",
+        "Zap / migrate callbacks that accept attacker parameters (Prisma 2024)"
+      ],
+      "entry_verbs": ["supply", "deposit", "borrow", "repay", "liquidate", "seize", "withdraw", "mint", "redeem"]
+    },
+    {
+      "id": "staking",
+      "name": "Staking / farming / vault",
+      "must_hold": [
+        "Reward checkpoints update before balance changes",
+        "Short-lived stake cannot steal prior rewards",
+        "Emergency exit cannot trap principal"
+      ],
+      "common_breaks": [
+        "notifyRewardAmount after deposit in same tx",
+        "Shared staking/reward token balance",
+        "First depositor inflation",
+        "Permissionless market registration treated as a trusted reward source (Penpie 2024)",
+        "Harvest measuring rewards as an untrusted balance delta"
+      ],
+      "entry_verbs": ["stake", "unstake", "deposit", "withdraw", "claim", "harvest", "getReward", "notifyRewardAmount", "registerMarket"]
+    },
+    {
+      "id": "bridge",
+      "name": "Bridge / messaging",
+      "must_hold": [
+        "Each message id is consumed once",
+        "Domain (src chain, dest chain, contract) is bound",
+        "Zero or stale roots cannot authorize mints",
+        "Users have a permissionless completion path"
+      ],
+      "common_breaks": [
+        "Uninitialized trusted root (Nomad)",
+        "Missing dest-domain check",
+        "Relayer-only completion"
+      ],
+      "entry_verbs": ["lock", "burn", "mint", "release", "processMessage", "validateProof", "completeTransfer"]
+    },
+    {
+      "id": "governance",
+      "name": "DAO / governor",
+      "must_hold": [
+        "Votes are snapshotted",
+        "Execution is delayed",
+        "Quorum and threshold cannot be bypassed by flash liquidity"
+      ],
+      "common_breaks": [
+        "Live-balance votes",
+        "Same-block propose+execute",
+        "Unrestricted cancel"
+      ],
+      "entry_verbs": ["propose", "castVote", "queue", "execute", "cancel", "delegate"]
+    },
+    {
+      "id": "nft",
+      "name": "NFT / marketplace",
+      "must_hold": [
+        "safeTransferFrom on mint to contracts",
+        "Listings bind token, price, expiry, and nonce",
+        "Royalty and fee math cannot overflow to zero"
+      ],
+      "common_breaks": [
+        "Missing onERC721Received",
+        "Reentrancy on royalty payout",
+        "Signature listing replay"
+      ],
+      "entry_verbs": ["mint", "safeMint", "buy", "list", "bid", "accept", "transferFrom"]
+    },
+    {
+      "id": "vault",
+      "name": "Yield vault / ERC-4626",
+      "must_hold": [
+        "Share conversion resists donation inflation",
+        "totalAssets is not a spot-manipulable number",
+        "Withdraw paths cannot be bricked by a single token"
+      ],
+      "common_breaks": [
+        "First depositor attack (still High in Sherlock/C4 2024-2025)",
+        "Strategy callbacks re-enter deposit",
+        "Ignoring FoT",
+        "Wrapper vault inheriting underlying ERC-4626 inflation",
+        "Async request/claim priced at a later attacker-moved rate"
+      ],
+      "entry_verbs": ["deposit", "mint", "withdraw", "redeem", "harvest", "tend"]
+    },
+    {
+      "id": "derivative",
+      "name": "Perps / options / synthetics",
+      "must_hold": [
+        "Mark price is not a single-block spot",
+        "Funding and liquidation use the same robust mark",
+        "Open interest and OI caps are enforced"
+      ],
+      "common_breaks": [
+        "Mark = uniswap spot",
+        "Uncapped funding during downtime",
+        "Self-trade to move mark"
+      ],
+      "entry_verbs": ["openPosition", "closePosition", "liquidate", "addMargin", "removeMargin"]
+    }
+  ]
+}

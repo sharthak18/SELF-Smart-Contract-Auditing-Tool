@@ -1,0 +1,314 @@
+{
+  "schema_version": 1,
+  "kind": "expert_tactics",
+  "reviewed_at": "2026-08-25",
+  "policy": "Public methodology only. Encoded as review lenses a human (or SELF) must apply. Not a substitute for those firms' work.",
+  "tactics": [
+    {
+      "id": "TAC-TOB-THREAT-MODEL",
+      "source": "Trail of Bits",
+      "title": "Threat-model the system before the bytecode",
+      "lens": "architecture",
+      "applies_to": [],
+      "questions": [
+        "What are the trust boundaries (oracles, admin keys, keepers, bridges, off-chain signers)?",
+        "What is the economic model and who can move price or liquidity in one transaction?",
+        "What is the upgrade and incident-response path?"
+      ],
+      "why": "Most catastrophic failures live in architecture, not in a missing require.",
+      "references": [
+        "https://www.trailofbits.com/services/software-assurance/blockchain/"
+      ]
+    },
+    {
+      "id": "TAC-TOB-INVARIANTS",
+      "source": "Trail of Bits",
+      "title": "Write protocol invariants and fuzz them",
+      "lens": "invariants",
+      "applies_to": [
+        "amm",
+        "lending",
+        "vault",
+        "staking",
+        "bridge"
+      ],
+      "questions": [
+        "What must remain true after every public call (solvency, k, share backing, message uniqueness)?",
+        "Are those statements encoded as Foundry/Echidna/Medusa invariants?",
+        "Do the invariants hold under donations, first deposit, and empty markets?"
+      ],
+      "why": "Surface scanners cannot see protocol-specific logic, which Immunefi says is now ~89% of DeFi losses.",
+      "references": [
+        "https://github.com/crytic/building-secure-contracts"
+      ]
+    },
+    {
+      "id": "TAC-PASHOV-LINE",
+      "source": "Pashov Audit Group",
+      "title": "Line-by-line plus contest-champion attack imagination",
+      "lens": "manual-review",
+      "applies_to": [],
+      "questions": [
+        "For each external/public function: who can call it, what value moves, what state changes, what is called out?",
+        "What happens if this function is called twice, re-entered, or sandwiched?",
+        "What happens if a listed token is FoT, rebasing, ERC777, or Token-2022?"
+      ],
+      "why": "Pashov-style reviews treat every state-changing entry as an attack surface, not a happy path.",
+      "references": [
+        "https://github.com/pashov/skills",
+        "https://www.pashov.com/"
+      ]
+    },
+    {
+      "id": "TAC-OZ-CEI",
+      "source": "OpenZeppelin",
+      "title": "Checks-effects-interactions and initializer hygiene",
+      "lens": "execution",
+      "applies_to": [],
+      "questions": [
+        "Is every external call after the last storage write that the callee can observe?",
+        "Are implementation initializers disabled in the constructor?",
+        "Does ERC-4626 use a decimals offset / virtual shares?"
+      ],
+      "why": "Wintermute-class init and 4626 inflation still appear in 2025 contest reports.",
+      "references": [
+        "https://docs.openzeppelin.com/contracts"
+      ]
+    },
+    {
+      "id": "TAC-SPEARBIT-INTEGRATION",
+      "source": "Spearbit",
+      "title": "Review the integration, not only the new file",
+      "lens": "integrations",
+      "applies_to": [
+        "vault",
+        "lending",
+        "amm",
+        "bridge"
+      ],
+      "questions": [
+        "Which external protocols are trusted for price, share rate, or message validity?",
+        "If that protocol is paused, upgraded, or re-entered, what happens here?",
+        "Are callbacks (flash loan, hooks, harvest, migrate) authenticated?"
+      ],
+      "why": "Penpie, Prisma zap, and Harvest all failed at the integration boundary.",
+      "references": [
+        "https://spearbit.com"
+      ]
+    },
+    {
+      "id": "TAC-SHERLOCK-4626",
+      "source": "Sherlock / Code4rena judging 2024-2025",
+      "title": "Empty-vault and donation inflation is still High/Med every contest",
+      "lens": "math",
+      "applies_to": [
+        "vault",
+        "staking",
+        "lending"
+      ],
+      "questions": [
+        "What is convertToShares(1) when totalSupply is 0 and after a raw transfer of 1e18 + 1?",
+        "Does a wrapper vault inherit the underlying vault's inflation?",
+        "Is rounding always against the user on mint and in favor of the vault on burn?"
+      ],
+      "why": "Pareto 2025, BakerFi 2024, Burve 2025 and dozens of siblings.",
+      "references": [
+        "https://github.com/sherlock-audit/2025-04-pareto-contest-judging/issues/119",
+        "https://github.com/code-423n4/2024-05-bakerfi-findings/issues/39"
+      ]
+    },
+    {
+      "id": "TAC-IMMUNEFI-LOGIC",
+      "source": "Immunefi 2025-2026 ecosystem reports",
+      "title": "Assume generic classes are patched; hunt protocol logic",
+      "lens": "business-logic",
+      "applies_to": [],
+      "questions": [
+        "What is this protocol's unique state machine (migrate, harvest, donate, hook, zap)?",
+        "Which function was added after the last audit (Euler eIP-14 pattern)?",
+        "Can an attacker combine two intended features into an unintended profit?"
+      ],
+      "why": "Flash-loan-as-primary-vector is now marginal. Remaining losses are protocol-specific.",
+      "references": [
+        "https://immunefi.com"
+      ]
+    },
+    {
+      "id": "TAC-SOLODIT-REPEAT",
+      "source": "Solodit finding corpus",
+      "title": "Search prior findings on the same primitive",
+      "lens": "corpus",
+      "applies_to": [],
+      "questions": [
+        "Has this exact function shape (onFlashLoan, harvest, convertToShares, processMessage) been exploited?",
+        "Which C4/Sherlock issues match the inheritance tree (Aave-fork, Compound-fork, 4626, CLAMM)?"
+      ],
+      "why": "Most 'new' bugs are known bugs on a renamed contract.",
+      "references": [
+        "https://solodit.xyz"
+      ]
+    },
+    {
+      "id": "TAC-CHAINLINK-L2",
+      "source": "Chainlink L2 guidance",
+      "title": "Stale + sequencer + heartbeat on every price read",
+      "lens": "oracle",
+      "applies_to": [
+        "lending",
+        "derivative",
+        "vault"
+      ],
+      "questions": [
+        "Is latestRoundData checked for answeredInRound, updatedAt, and non-zero answer?",
+        "On L2, is the sequencer-uptime feed consulted?",
+        "Is there a protocol heartbeat independent of the feed?"
+      ],
+      "why": "A 'fresh' timestamp during sequencer downtime is a frozen price.",
+      "references": [
+        "https://docs.chain.link/data-feeds/l2-sequencer-feeds"
+      ]
+    },
+    {
+      "id": "TAC-ANCHOR-ACCOUNTS",
+      "source": "Anchor / Neodyme / OtterSec public notes",
+      "title": "Every remaining account is attacker-controlled",
+      "lens": "solana",
+      "applies_to": [],
+      "questions": [
+        "Is every privileged account Signer or a PDA with canonical bump?",
+        "Are mutable pairs required to be distinct?",
+        "Is the token program / mint / sysvar typed rather than AccountInfo?"
+      ],
+      "why": "Cashio, Wormhole Solana path, and most Anchor contest Highs.",
+      "references": [
+        "https://github.com/coral-xyz/anchor"
+      ]
+    },
+    {
+      "id": "TAC-MEV-USER",
+      "source": "Flashbots / Uniswap research",
+      "title": "Treat the public mempool as an adversary",
+      "lens": "mev",
+      "applies_to": [
+        "amm",
+        "vault",
+        "nft"
+      ],
+      "questions": [
+        "Does every value-changing swap have minOut and a deadline?",
+        "Can initialize, first deposit, or commit be front-run?",
+        "Are liquidations and oracle updates sandwichable against users?"
+      ],
+      "why": "Missing slippage is still a daily extraction, even when it is not a 'hack'.",
+      "references": [
+        "https://www.flashbots.net/"
+      ]
+    },
+    {
+      "id": "TAC-UPGRADE-DIFF",
+      "source": "OpenZeppelin / Spearbit upgrade reviews",
+      "title": "Audit the diff that shipped after the last report",
+      "lens": "upgrades",
+      "applies_to": [],
+      "questions": [
+        "Which functions were added since the last audit (donate, migrate, hook, harvest)?",
+        "Does the new path skip a check the old paths still perform?",
+        "Did storage layout and initializer version increment correctly?"
+      ],
+      "why": "Euler's vulnerable function was introduced by a post-audit governance upgrade.",
+      "references": [
+        "https://docs.openzeppelin.com/upgrades-plugins"
+      ]
+    },
+    {
+      "id": "TAC-PER-FUNCTION-BINDING",
+      "source": "C4 2022-2025 replay of BakerFi, Next Generation, Revert Lend, Fraxlend, Ethena",
+      "title": "Ask what each argument binds, not whether the project has a check somewhere",
+      "lens": "whole-code",
+      "applies_to": [
+        "solidity",
+        "lending",
+        "vault",
+        "bridge"
+      ],
+      "questions": [
+        "Is domainSeparator / token / minOut / deadline a caller argument or computed on-chain?",
+        "Does every swap path set amountOutMinimum, or only one helper?",
+        "Does the oracle scale this feed's decimals(), or a hardcoded 1e18 from another file?",
+        "Does whitelist/blacklist wrap burn and redeem, or only transfer?",
+        "Does liquidate write off leftover debt, or only seize collateral?"
+      ],
+      "why": "Ten Code4rena high-bounty contests were missed when facts were OR-ed across the repo. A nonce in file A does not bind a signature in file B.",
+      "references": [
+        "https://code4rena.com/reports/2024-05-bakerfi",
+        "https://code4rena.com/reports/2025-01-next-generation"
+      ]
+    },
+    {
+      "id": "TAC-CONTEST-BRIEF",
+      "source": "Code4rena / Sherlock contest README discipline",
+      "title": "Read the brief before the bytecode",
+      "lens": "documentation",
+      "applies_to": [
+        "solidity",
+        "lending",
+        "vault",
+        "bridge"
+      ],
+      "questions": [
+        "What did the sponsor list under Known Issues / Automated Findings?",
+        "Which files are in scope.txt versus out_of_scope.txt?",
+        "Which roles are documented as trusted, and is that trust actually enforced in code?",
+        "Did the sponsor accept first-depositor inflation, FoT-incompatibility, or oracle-operator risk?"
+      ],
+      "why": "Ten C4 replays with --no-docs on scope-only copies ignored the contest README. Wardens are scored against that brief; repeating a declared known issue is wasted work, and reporting on an out-of-scope mock is a false positive.",
+      "references": [
+        "https://docs.code4rena.com/roles/wardens/judging-criteria",
+        "https://code4rena.com/reports/2024-05-bakerfi"
+      ]
+    },
+    {
+      "id": "TAC-PRIOR-AUDITS",
+      "source": "OpenZeppelin / Spearbit / contest README discipline",
+      "title": "Read every local PDF, prior report, and linked doc before the bytecode",
+      "lens": "documentation",
+      "applies_to": [],
+      "questions": [
+        "Which prior-audit PDFs and markdown reports sit in audits/ or reports/?",
+        "Which https links in the README are protocol docs vs previous findings?",
+        "Did a previous auditor already name a class that the sponsor did not accept?",
+        "If --online is on, did fetched pages change the trusted-role or known-issue list?"
+      ],
+      "why": "Sponsors leave Spearbit PDFs, GitBook links, and old C4 reports in the repo. Ignoring them wastes time re-finding accepted risk and misses the threat model the last auditor already wrote down.",
+      "references": [
+        "https://docs.openzeppelin.com/contracts",
+        "https://osv.dev"
+      ]
+    },
+    {
+      "id": "TAC-SLITHER-CLASS",
+      "source": "Slither / Aderyn public detector lists (encoded as a review lens, not a wrapper)",
+      "title": "Walk every public function for the sinks scanners are famous for",
+      "lens": "per-function",
+      "applies_to": [
+        "solidity",
+        "vyper"
+      ],
+      "questions": [
+        "Does this unauthed function transferFrom a from argument that is not msg.sender?",
+        "Does it send ETH to a caller-supplied address rather than msg.sender?",
+        "Is msg.value read inside a loop?",
+        "Can the contract receive ETH with no withdraw?",
+        "Is abi.encodePacked hashing two adjacent string/bytes values?",
+        "Is a .call / .send return value ignored?",
+        "Is a balance compared with == ?",
+        "Does delete on a mapping of structs leave a nested mapping?"
+      ],
+      "why": "Users should not need to run Slither or Aderyn for these classes. SELF already has 161 static detectors; the gap was naming the same sinks from per-function facts so the autonomous reasoner fires without a compiler IR.",
+      "references": [
+        "https://github.com/crytic/slither/wiki/Detector-Documentation",
+        "https://github.com/Cyfrin/aderyn"
+      ]
+    }
+  ]
+}

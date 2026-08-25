@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "kind": "math_models",
+  "reviewed_at": "2026-08-25",
+  "models": [
+    {
+      "id": "MATH-CPMM",
+      "name": "Constant-product AMM (x * y = k)",
+      "protocol_types": ["amm"],
+      "signals": ["getReserves", "swap", "amountIn", "amountOut", "k = ", "x * y"],
+      "invariants": [
+        "reserve0 * reserve1 does not decrease after a swap once fees are accounted",
+        "spot price is reserve1/reserve0 and is single-block manipulable",
+        "first mint must lock MINIMUM_LIQUIDITY forever"
+      ],
+      "hazards": [
+        "Using spot price as an oracle",
+        "Missing minAmountOut",
+        "Donations that change k without minting shares",
+        "Fee-on-transfer breaking reserve accounting"
+      ],
+      "safe_pattern": "k_after >= k_before * (1 - fee)^2; liquidity burned to address(0) on first mint."
+    },
+    {
+      "id": "MATH-STABLESWAP",
+      "name": "StableSwap invariant",
+      "protocol_types": ["amm"],
+      "signals": ["get_D", "get_y", "A *", "amp", "StableSwap"],
+      "invariants": [
+        "D is non-decreasing after balanced operations",
+        "A (amplification) changes must be gradual"
+      ],
+      "hazards": [
+        "Instant A changes enable value extraction",
+        "Rounding in get_y favoring the swappers",
+        "Virtual-price read during removal (read-only reentrancy)"
+      ],
+      "safe_pattern": "Ramp A over days; lock virtual price during external calls."
+    },
+    {
+      "id": "MATH-ERC4626",
+      "name": "ERC-4626 share / asset conversion",
+      "protocol_types": ["vault", "staking", "lending"],
+      "signals": ["convertToShares", "convertToAssets", "totalAssets", "previewDeposit", "ERC4626"],
+      "invariants": [
+        "shares = assets * (totalSupply + offset) / (totalAssets + offset)",
+        "mint rounds in favor of the vault; redeem rounds in favor of the vault",
+        "empty vault cannot be inflated by donation"
+      ],
+      "hazards": [
+        "offset = 0 and totalSupply = 0",
+        "totalAssets reads a manipulable balance",
+        "inflation via direct token transfer"
+      ],
+      "safe_pattern": "Virtual shares/assets (OpenZeppelin ERC4626) or burned dead shares."
+    },
+    {
+      "id": "MATH-COMPOUND-INTEREST",
+      "name": "Index / accumulator interest",
+      "protocol_types": ["lending", "staking"],
+      "signals": ["borrowIndex", "supplyIndex", "rewardPerToken", "accRewardPerShare", "exchangeRate"],
+      "invariants": [
+        "Every balance-changing action accrues first",
+        "Index is monotonic",
+        "Index cannot overflow for the intended lifetime"
+      ],
+      "hazards": [
+        "Missing accrue on liquidate/repay/transfer",
+        "Zero-totalSupply index reset",
+        "Reward checkpoint after balance change"
+      ],
+      "safe_pattern": "accrue() as the first statement of every state-changing entry."
+    },
+    {
+      "id": "MATH-HEALTH-FACTOR",
+      "name": "Lending health factor",
+      "protocol_types": ["lending"],
+      "signals": ["healthFactor", "liquidationThreshold", "collateralFactor", "ltv"],
+      "invariants": [
+        "HF = collateral * price * LT / debt * price",
+        "Liquidation only when HF < 1",
+        "Close factor and incentive leave a safety buffer"
+      ],
+      "hazards": [
+        "Stale or spot oracle",
+        "Self-liquidation bonus",
+        "Same-block price update + borrow"
+      ],
+      "safe_pattern": "Fresh independent oracle, close factor < 100%, no self-liquidation."
+    },
+    {
+      "id": "MATH-WEIGHTED-POOL",
+      "name": "Weighted / Balancer-style pool",
+      "protocol_types": ["amm"],
+      "signals": ["getNormalizedWeights", "onSwap", "FlashLoan", "IVault"],
+      "invariants": [
+        "Product of reserve_i ^ weight_i is preserved after fees",
+        "Weights sum to 1e18"
+      ],
+      "hazards": [
+        "Read-only reentrancy via Vault callbacks",
+        "Join/exit without min amounts"
+      ],
+      "safe_pattern": "Balancer Vault reentrancy lock observed by all pools."
+    },
+    {
+      "id": "MATH-FUNDING",
+      "name": "Perpetual funding rate",
+      "protocol_types": ["derivative"],
+      "signals": ["fundingRate", "indexPrice", "markPrice", "openInterest"],
+      "invariants": [
+        "Mark is not a single-block spot",
+        "Funding cannot be forced by a flash move of mark"
+      ],
+      "hazards": [
+        "Mark = spot AMM",
+        "Unbounded funding during sequencer downtime"
+      ],
+      "safe_pattern": "TWAP mark, funding clamps, sequencer-uptime pause."
+    },
+    {
+      "id": "MATH-CLAMM",
+      "name": "Concentrated-liquidity tick / sqrtPrice",
+      "protocol_types": ["amm"],
+      "signals": ["currentTick", "sqrtP", "sqrtPriceX96", "TickMath", "getSqrtRatioAtTick", "liquidityNet"],
+      "invariants": [
+        "Active liquidity increases by at most the minted amount when a tick is crossed",
+        "sqrtP == TickMath.getSqrtRatioAtTick(t) is a first-class case, not an off-by-one",
+        "Fee growth is not added twice on a boundary cross"
+      ],
+      "hazards": [
+        "Double-add of liquidity when price sits exactly on a tick (KyberSwap Elastic)",
+        "Using a CLAMM spot as a same-block oracle",
+        "Spoof tokens with empty ticks moving an internal price curve"
+      ],
+      "safe_pattern": "Fuzz exact-tick mint+cross; refuse unknown tokens as price inputs."
+    },
+    {
+      "id": "MATH-DONATION-RESERVE",
+      "name": "Donation / reserve transfer vs account health",
+      "protocol_types": ["lending"],
+      "signals": ["donateToReserves", "donateTo", "function donate", "reserves"],
+      "invariants": [
+        "Any reduction in collateral or equity runs the same solvency check as withdraw",
+        "Reserves cannot be credited from an undercollateralized account",
+        "Self-liquidation cannot extract a bonus after a donation"
+      ],
+      "hazards": [
+        "donateToReserves skipping the health check (Euler 2023)",
+        "Donation used to inflate a share or exchange rate"
+      ],
+      "safe_pattern": "donate() calls the canonical requireHealthy / checkAccountStatus path."
+    },
+    {
+      "id": "MATH-REWARD-DELTA",
+      "name": "Harvest reward as balance delta",
+      "protocol_types": ["staking", "vault"],
+      "signals": ["redeemRewards", "batchHarvest", "harvest", "claimRewards"],
+      "invariants": [
+        "Credited rewards equal a trusted interface return, not a raw balance delta",
+        "A re-entrant deposit cannot increase credited rewards"
+      ],
+      "hazards": [
+        "before = balanceOf; untrusted.redeem(); reward = balanceOf - before (Penpie)",
+        "Permissionless market supplies the redeem target"
+      ],
+      "safe_pattern": "Trusted reward amount + nonReentrant covering harvest and deposit."
+    }
+  ]
+}

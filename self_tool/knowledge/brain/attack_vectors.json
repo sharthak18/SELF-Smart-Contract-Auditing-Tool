@@ -1,0 +1,2000 @@
+{
+  "schema_version": 1,
+  "kind": "attack_vectors",
+  "reviewed_at": "2026-08-25",
+  "source": "Encoded from public post-mortems (The DAO, Cream, Euler, Nomad, Wormhole, Ronin, Poly Network, Curve Vyper, Mango, Cashio, Beanstalk, Inverse, Rari, Fei, Wintermute, KyberSwap Elastic, Bonq, Prisma, Penpie, Radiant, Cetus, Compound, Harvest, bZx) plus Immunefi 2025-2026 loss reports, Sherlock/C4 2024-2025 judging, OWASP SC Top 10 2026 and SWC. Recent incidents also live in incidents.json so they train retrieval without minting catalog detectors.",
+  "vectors": [
+    {
+      "id": "AV-REENTRANCY-CLASSIC",
+      "title": "Classic reentrancy: external call before state settlement",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC08:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [
+        "SWC-107"
+      ],
+      "required_any_patterns": [
+        ".call{value",
+        ".call{ value",
+        ".call.value",
+        "raw_call(",
+        ".transfer(",
+        ".send("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "permissionless_value_out",
+        "external_call_before_write"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-001",
+        "VYP-CRIT-001",
+        "STAKE-CRIT-002"
+      ],
+      "description": "A state-changing function performs an external call or ETH transfer before it finishes writing the balances, shares, or claimed flags that the call can observe.",
+      "exploit": "An attacker contract re-enters the same or a sibling function during the callback and drains funds while the accounting still shows a pre-call balance.",
+      "remediation": "Apply checks-effects-interactions, clear the claimable amount first, and add a reentrancy lock that covers every function sharing the mutated state.",
+      "proof_obligation": "Trace every external call and prove all affected storage is finalized before control leaves the contract.",
+      "real_incidents": [
+        "The DAO 2016",
+        "Lendf.me 2020",
+        "Cream 2021",
+        "Fei/Rari 2022"
+      ]
+    },
+    {
+      "id": "AV-REENTRANCY-READONLY",
+      "title": "Read-only reentrancy against a view used as a price or share rate",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "amm",
+        "lending",
+        "staking"
+      ],
+      "owasp": "SC08:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [
+        "SWC-107"
+      ],
+      "required_any_patterns": [
+        "get_virtual_price",
+        "getReserves",
+        "totalAssets",
+        "convertToAssets",
+        "getPricePerFullShare"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "has_view_price",
+        "external_call_before_write"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-003"
+      ],
+      "description": "A view function exposes transient pool or vault state during an external callback. Downstream protocols treat that view as a trustworthy price.",
+      "exploit": "Trigger a liquidity removal that calls out, read the stale virtual price from a callback, and borrow or mint against the inflated valuation.",
+      "remediation": "Lock view functions that feed oracles, or snapshot the rate before any external call and expose only the snapshot.",
+      "proof_obligation": "Show no view consumed by another protocol can observe a mid-function reserve or share rate.",
+      "real_incidents": [
+        "Curve read-only reentrancy class 2023",
+        "Sonne/Granary-style oracle reads"
+      ]
+    },
+    {
+      "id": "AV-ORACLE-SPOT",
+      "title": "Spot AMM reserves used as a price oracle",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "amm",
+        "lending",
+        "derivative",
+        "staking"
+      ],
+      "owasp": "SC03:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [
+        "SWC-116"
+      ],
+      "required_any_patterns": [
+        "getReserves",
+        "slot0"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "uses_spot_price",
+        "value_depends_on_price"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-001",
+        "LEND-HIGH-004",
+        "PROJECT-ORACLE-001"
+      ],
+      "description": "Collateral, mint, or liquidation logic prices an asset from a single-block AMM spot or a raw token balance.",
+      "exploit": "Flash-loan the pool, move the spot price, borrow or liquidate against the manipulated valuation, then restore the pool and repay the loan in one transaction.",
+      "remediation": "Use a manipulation-resistant oracle (Chainlink, Uniswap v3 TWAP with sufficient window and liquidity, or a committee with freshness checks).",
+      "proof_obligation": "Prove every pricing input has a window, liquidity floor, freshness bound, and cannot be moved profitably in one transaction.",
+      "real_incidents": [
+        "bZx 2020",
+        "Harvest 2020",
+        "Mango 2022",
+        "Bonq 2023",
+        "Exact/Onyx class"
+      ]
+    },
+    {
+      "id": "AV-FLASHLOAN-CALLBACK",
+      "title": "Unauthenticated flash-loan or hook callback",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "lending",
+        "amm",
+        "vault"
+      ],
+      "owasp": "SC04:2026",
+      "cwe": [
+        "CWE-862"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        "onFlashLoan",
+        "executeOperation",
+        "uniswapV2Call",
+        "uniswapV3SwapCallback",
+        "pancakeCall",
+        "receiveFlashLoan"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "has_flashloan_callback"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-004"
+      ],
+      "description": "A callback intended to be invoked only by a pool or lender does not bind initiator, asset, amount, and caller.",
+      "exploit": "Call the callback directly with attacker-chosen amounts to mint, liquidate, or steal approvals without posting a real loan.",
+      "remediation": "Require msg.sender to be the canonical pool, bind the initiator, and reconcile amount plus fee against the actual balance delta.",
+      "proof_obligation": "Every callback path rejects direct calls and mismatched loan parameters.",
+      "real_incidents": [
+        "Multiple ERC3156 mis-integrations",
+        "Cream iron-bank callback class",
+        "Prisma MigrateTroveZap 2024"
+      ]
+    },
+    {
+      "id": "AV-FIRST-DEPOSITOR",
+      "title": "First-depositor or donation share inflation",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "staking",
+        "lending",
+        "vault"
+      ],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "totalSupply",
+        "totalAssets",
+        "convertToShares",
+        "previewDeposit",
+        "balanceOf(address(this))"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_share_vault",
+        "missing_virtual_shares"
+      ],
+      "related_detectors": [
+        "LEND-CRIT-002",
+        "SOL-MED-010",
+        "AMM-HIGH-002"
+      ],
+      "description": "Shares are minted as assets * totalSupply / totalAssets with no virtual offset and no dead shares. An empty vault can be inflated by a donation.",
+      "exploit": "Deposit 1 wei, donate a large amount directly to the vault, then watch a subsequent depositor mint 0 shares while their assets stay in the vault.",
+      "remediation": "Use virtual shares and virtual assets, burn a permanent minimum liquidity, or require a non-zero first deposit that cannot be fully withdrawn.",
+      "proof_obligation": "Model empty-vault, donation, and rounding-down-to-zero states and prove shares cannot be cheaply inflated.",
+      "real_incidents": [
+        "ERC-4626 inflation class",
+        "BakerFi C4 2024",
+        "Pareto Sherlock 2025",
+        "Burve Sherlock 2025"
+      ]
+    },
+    {
+      "id": "AV-ROUNDING-DIRECTION",
+      "title": "Division before multiplication or attacker-favorable rounding",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper",
+        "rust",
+        "move"
+      ],
+      "protocol_types": [
+        "amm",
+        "lending",
+        "staking",
+        "vault"
+      ],
+      "owasp": "SC07:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [
+        "SWC-101"
+      ],
+      "required_any_patterns": [
+        " / ",
+        " // "
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "div_before_mul"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-011",
+        "SOL-MED-008",
+        "AMM-MED-001"
+      ],
+      "description": "Share, fee, or exchange-rate math divides before it multiplies, or always rounds in the depositor or borrower's favor.",
+      "exploit": "Repeat tiny deposits, withdrawals, or swaps so truncation accumulates into extractable value, or empty a pool via repeated 1-wei operations.",
+      "remediation": "Multiply first, use mulDiv with explicit rounding direction, and round against the user on mint and in favor of the protocol on burn.",
+      "proof_obligation": "Differential-test every value-bearing formula against a full-precision reference over boundary inputs.",
+      "real_incidents": [
+        "Multiple vault and AMM rounding findings"
+      ]
+    },
+    {
+      "id": "AV-ACCESS-MISSING",
+      "title": "Privileged state change without authorization",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "vyper",
+        "rust",
+        "move",
+        "huff"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-284",
+        "CWE-862"
+      ],
+      "swc": [
+        "SWC-105",
+        "SWC-106"
+      ],
+      "required_any_patterns": [],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "unguarded_privileged_write"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-005",
+        "SOL-CRIT-006",
+        "PROJECT-AUTH-001",
+        "SOL-RUST-001",
+        "MOV-CRIT-001"
+      ],
+      "description": "A function that mints, sets an owner, upgrades, withdraws reserves, or changes a critical parameter is callable by anyone.",
+      "exploit": "Call the function from an arbitrary account and seize funds, roles, or upgrade rights.",
+      "remediation": "Gate the function with a role check bound to msg.sender (or a validated signature), not tx.origin.",
+      "proof_obligation": "Enumerate intended callers and prove every privileged write is unreachable otherwise.",
+      "real_incidents": [
+        "Parity wallet 2017",
+        "Wintermute proxy 2022",
+        "Numerous init/mint bugs"
+      ]
+    },
+    {
+      "id": "AV-TX-ORIGIN",
+      "title": "Authorization via tx.origin",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-477"
+      ],
+      "swc": [
+        "SWC-115"
+      ],
+      "required_any_patterns": [
+        "tx.origin"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "uses_tx_origin_auth"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-009"
+      ],
+      "description": "Privilege is granted when tx.origin matches an owner, so any contract the owner interacts with can impersonate them.",
+      "exploit": "Phish the owner into calling an attacker contract that then calls the privileged function.",
+      "remediation": "Authorize with msg.sender or an EIP-712 signature bound to nonce, chain, and contract.",
+      "proof_obligation": "No authorization predicate reads tx.origin.",
+      "real_incidents": [
+        "Classic phishing-via-tx.origin class"
+      ]
+    },
+    {
+      "id": "AV-SIGNATURE-REPLAY",
+      "title": "Signature missing nonce, chain, or domain binding",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-294",
+        "CWE-347"
+      ],
+      "swc": [
+        "SWC-121",
+        "SWC-117"
+      ],
+      "required_any_patterns": [
+        "ecrecover",
+        "ECDSA.recover",
+        "permit(",
+        "isValidSignature"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "has_signature_auth",
+        "missing_signature_binding"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-010",
+        "SOL-CRIT-014",
+        "SOL-HIGH-023"
+      ],
+      "description": "Signed authorizations do not bind nonce, chain id, verifying contract, and action, or ecrecover's zero address is accepted.",
+      "exploit": "Replay a valid signature on another chain, contract, or after a state change, or submit a malleable s-value.",
+      "remediation": "Use EIP-712 with name, version, chainId, verifyingContract, a monotonic nonce, and reject ecrecover == address(0).",
+      "proof_obligation": "Replay across nonce, chain, contract, parameter, and deadline boundaries fails.",
+      "real_incidents": [
+        "Polygon Plasma 2021",
+        "Multiple permit/bridge replays"
+      ]
+    },
+    {
+      "id": "AV-PROXY-INIT",
+      "title": "Unprotected initializer or implementation takeover",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC10:2026",
+      "cwe": [
+        "CWE-665"
+      ],
+      "swc": [
+        "SWC-118"
+      ],
+      "required_any_patterns": [
+        "initialize(",
+        "initializer",
+        "UUPSUpgradeable",
+        "upgradeTo",
+        "delegatecall"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_upgradeable",
+        "initializer_unprotected"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-007",
+        "SOL-HIGH-013",
+        "PROJECT-PROXY-001"
+      ],
+      "description": "A proxy implementation can be initialized by anyone, or the implementation contract itself is left uninitialized so an attacker becomes owner and selfdestructs it.",
+      "exploit": "Front-run initialize on the proxy, or take over the implementation, destroy it, and brick every proxy pointing at it.",
+      "remediation": "Disable initializers in the implementation constructor and restrict initialize to the deployment transaction.",
+      "proof_obligation": "Race initialization and repeated initialization on both proxy and implementation fail.",
+      "real_incidents": [
+        "Wintermute 2022",
+        "Multiple UUPS takeovers"
+      ]
+    },
+    {
+      "id": "AV-STORAGE-COLLISION",
+      "title": "Proxy storage layout collision across upgrades",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC10:2026",
+      "cwe": [
+        "CWE-665"
+      ],
+      "swc": [
+        "SWC-124"
+      ],
+      "required_any_patterns": [
+        "delegatecall",
+        "upgradeTo",
+        "ERC1967"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [
+        "__gap"
+      ],
+      "fact_predicates": [
+        "is_upgradeable",
+        "missing_storage_gap"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-008",
+        "SOL-HIGH-020"
+      ],
+      "description": "An upgrade inserts a state variable without a storage gap, shifting later slots and corrupting balances or owners.",
+      "exploit": "After the upgrade, existing storage is interpreted as a different type or owner, enabling unauthorized withdrawals.",
+      "remediation": "Append-only storage, reserved __gap slots, and ERC-7201 namespaced storage.",
+      "proof_obligation": "Storage-layout diffs across every upgrade path show no slot reuse.",
+      "real_incidents": [
+        "Historical OpenZeppelin audit class"
+      ]
+    },
+    {
+      "id": "AV-SLIPPAGE",
+      "title": "Value-changing swap or liquidity op without slippage bound",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [
+        "SWC-114"
+      ],
+      "required_any_patterns": [
+        "amountOutMinimum: 0",
+        "amountOutMin = 0",
+        "minAmountOut"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "amount_out_min_zero"
+      ],
+      "related_detectors": [
+        "AMM-HIGH-001",
+        "SOL-HIGH-009",
+        "SOL-HIGH-019"
+      ],
+      "description": "A swap, zap, or liquidity change does not enforce a caller-supplied minOut/maxIn and deadline.",
+      "exploit": "Sandwich the transaction: move price against the user, let the trade execute at a worse rate, then restore price and extract the difference.",
+      "remediation": "Require minAmountOut or maxAmountIn and a deadline on every value-changing AMM operation.",
+      "proof_obligation": "Moving price before execution reverts outside the user's tolerance.",
+      "real_incidents": [
+        "Harvest 2020",
+        "Countless DEX router sandwiches"
+      ]
+    },
+    {
+      "id": "AV-GOVERNANCE-FLASH",
+      "title": "Flash-loaned voting power or same-block execution",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "governance"
+      ],
+      "owasp": "SC04:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "castVote",
+        "propose(",
+        "queue(",
+        "execute(",
+        "getVotes"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_governance",
+        "votes_not_checkpointed"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-012"
+      ],
+      "description": "Voting power is read from the live token balance and proposals can be executed in the same window they are passed.",
+      "exploit": "Borrow governance tokens, pass and execute a malicious proposal, return the tokens.",
+      "remediation": "Checkpoint votes, use a past block for snapshots, and enforce a timelock before execution.",
+      "proof_obligation": "Temporary token balances cannot change the outcome of a proposal that can be executed.",
+      "real_incidents": [
+        "Build Finance 2022",
+        "Beanstalk 2022"
+      ]
+    },
+    {
+      "id": "AV-BRIDGE-REPLAY",
+      "title": "Cross-chain message replay or unverified root",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "rust",
+        "move"
+      ],
+      "protocol_types": [
+        "bridge"
+      ],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-294",
+        "CWE-345"
+      ],
+      "swc": [
+        "SWC-121"
+      ],
+      "required_any_patterns": [
+        "processMessage",
+        "validateProof",
+        "merkleRoot",
+        "executeProposal",
+        "completeTransfer"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_bridge",
+        "missing_message_nullifier"
+      ],
+      "related_detectors": [
+        "BRIDGE-CRIT-001",
+        "BRIDGE-CRIT-003",
+        "BRIDGE-HIGH-001"
+      ],
+      "description": "A destination-chain executor does not consume a message id, or accepts a zero/stale merkle root, or does not bind source and destination domain.",
+      "exploit": "Replay a valid lock/burn proof, or submit a proof against an uninitialized root, and mint unbacked tokens.",
+      "remediation": "Bind source chain, dest chain, nonce, recipient, and amount; consume the message id exactly once; reject zero roots.",
+      "proof_obligation": "The same valid message cannot credit value twice and a zero root cannot authorize anything.",
+      "real_incidents": [
+        "Nomad 2022",
+        "Qubit 2022",
+        "Poly Network 2021"
+      ]
+    },
+    {
+      "id": "AV-SELFDESTRUCT",
+      "title": "Unprotected selfdestruct or force-send assumption",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "vyper",
+        "huff"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-284"
+      ],
+      "swc": [
+        "SWC-106"
+      ],
+      "required_any_patterns": [
+        "selfdestruct",
+        "self.destruct",
+        "SELFDESTRUCT"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "has_selfdestruct"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-006",
+        "VYP-CRIT-003"
+      ],
+      "description": "Anyone can destroy the contract, or logic assumes address(this).balance is only increased by intended deposits (broken by selfdestruct / beacon force-send).",
+      "exploit": "Destroy the contract and take its funds, or inflate a balance-based accounting assumption.",
+      "remediation": "Remove selfdestruct on post-Cancun chains or gate it strictly; never treat raw ETH balance as an invariant.",
+      "proof_obligation": "Unauthorized accounts cannot reach destruction, and accounting uses tracked deposits not raw balance.",
+      "real_incidents": [
+        "Parity 2017",
+        "Multiple force-send vault bugs"
+      ]
+    },
+    {
+      "id": "AV-SOLANA-SIGNER",
+      "title": "Solana/Anchor missing signer or arbitrary CPI",
+      "severity": "CRITICAL",
+      "languages": [
+        "rust"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-862"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "AccountInfo",
+        "invoke(",
+        "invoke_signed",
+        "UncheckedAccount"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "solana_missing_signer_or_cpi"
+      ],
+      "related_detectors": [
+        "SOL-RUST-001",
+        "SOL-RUST-003",
+        "SOL-RUST-002"
+      ],
+      "description": "A privileged Anchor account is not Signer, or a CPI target program is not constrained, or ownership is not checked.",
+      "exploit": "Pass an attacker-controlled account or program and steal tokens or rewrite state.",
+      "remediation": "Use Signer, Account<'info, T> with owner and has_one constraints, and bind CPI program ids.",
+      "proof_obligation": "Every privileged account must be a signer or PDA with canonical bump; every CPI program is allowlisted.",
+      "real_incidents": [
+        "Cashio 2022",
+        "Wormhole 2022",
+        "Multiple Anchor contests"
+      ]
+    },
+    {
+      "id": "AV-SOLANA-ACCOUNT-CONFUSION",
+      "title": "Duplicate mutable accounts or spoofable sysvar",
+      "severity": "HIGH",
+      "languages": [
+        "rust"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-345"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "AccountInfo",
+        "Sysvar",
+        "Clock",
+        "token::"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "solana_alias_or_sysvar_risk"
+      ],
+      "related_detectors": [
+        "SOL-RUST-007",
+        "SOL-RUST-010",
+        "SOL-RUST-011"
+      ],
+      "description": "Two mutable role accounts can be the same key, or Clock/Rent/token program identity is not typed.",
+      "exploit": "Pass the same account for vault and attacker, or substitute Token-2022 / a fake Clock to bypass checks.",
+      "remediation": "Require key inequality, typed Sysvar accounts, and explicit token program identity.",
+      "proof_obligation": "Same-account pairs and spoofed sysvars/token programs are rejected.",
+      "real_incidents": [
+        "Multiple Solana audit findings"
+      ]
+    },
+    {
+      "id": "AV-MOVE-CAPABILITY",
+      "title": "Move missing signer or capability check",
+      "severity": "CRITICAL",
+      "languages": [
+        "move"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-862"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "public entry",
+        "borrow_global_mut",
+        "move_to",
+        "move_from"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "move_unauth_write"
+      ],
+      "related_detectors": [
+        "MOV-CRIT-001",
+        "MOV-HIGH-001",
+        "MOV-HIGH-003"
+      ],
+      "description": "An entry function mutates a global resource without requiring the intended signer or capability.",
+      "exploit": "Call the entry function from an unrelated signer and take or corrupt the resource.",
+      "remediation": "Require signer, store capabilities under the rightful address, and abort on wrong-address borrows.",
+      "proof_obligation": "Every global write is gated by signer or capability ownership.",
+      "real_incidents": [
+        "Move/Aptos/Sui contest class"
+      ]
+    },
+    {
+      "id": "AV-VYPER-COMPILER",
+      "title": "Vyper compiler version with known reentrancy or storage bugs",
+      "severity": "CRITICAL",
+      "languages": [
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC08:2026",
+      "cwe": [
+        "CWE-94"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "# @version"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "vyper_vulnerable_compiler"
+      ],
+      "related_detectors": [
+        "VYP-INFO-001",
+        "VYP-CRIT-001"
+      ],
+      "description": "The pinned Vyper version is in a range with a public compiler bug (reentrancy lock 0.2.15\u20130.3.0, storage corruption 0.3.7).",
+      "exploit": "Use the compiler bug rather than a source-level mistake \u2014 the @nonreentrant decorator or storage layout does not behave as written.",
+      "remediation": "Recompile with a maintained Vyper release and rerun invariant tests.",
+      "proof_obligation": "The deployed compiler version is not in any published affected range.",
+      "real_incidents": [
+        "Curve Vyper pools July 2023"
+      ]
+    },
+    {
+      "id": "AV-DOS-UNBOUNDED",
+      "title": "Unbounded loop over a user-growable array",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-400"
+      ],
+      "swc": [
+        "SWC-128"
+      ],
+      "required_any_patterns": [
+        "for (",
+        "for i in range",
+        ".length"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "unbounded_loop_over_storage"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-007",
+        "VYP-MED-005",
+        "SOL-MED-011"
+      ],
+      "description": "A public function iterates an array that any user can grow, so the call can exceed the block gas limit and lock funds.",
+      "exploit": "Push enough entries that distribute/withdraw can never succeed.",
+      "remediation": "Paginate, use pull-over-push, or cap the collection independently of users.",
+      "proof_obligation": "The loop bound is independent of unbounded user input.",
+      "real_incidents": [
+        "Multiple airdrop/vault DoS findings"
+      ]
+    },
+    {
+      "id": "AV-WEAK-RANDOM",
+      "title": "Validator-predictable randomness",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "nft",
+        "governance"
+      ],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-330"
+      ],
+      "swc": [
+        "SWC-120"
+      ],
+      "required_any_patterns": [
+        "block.timestamp",
+        "block.number",
+        "block.prevrandao",
+        "blockhash(",
+        "block.difficulty"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "uses_weak_randomness"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-010",
+        "VYP-HIGH-006"
+      ],
+      "description": "A lottery, NFT rarity, or keeper election uses block attributes an proposer can bias.",
+      "exploit": "Search feasible timestamps or prevrandao values and only publish a block (or submit a tx) when the outcome is favorable.",
+      "remediation": "Use a VRF or a commit-reveal bound to msg.sender.",
+      "proof_obligation": "Outcomes cannot be predicted or biased by proposers or submitters.",
+      "real_incidents": [
+        "Countless raffle/NFT findings"
+      ]
+    },
+    {
+      "id": "AV-FEE-ON-TRANSFER",
+      "title": "Fee-on-transfer or rebasing token mis-accounting",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "amm",
+        "lending",
+        "staking",
+        "vault"
+      ],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "transferFrom",
+        "safeTransferFrom",
+        "transfer("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "credits_transfer_amount_not_delta"
+      ],
+      "related_detectors": [
+        "AMM-HIGH-003",
+        "SOL-HIGH-008"
+      ],
+      "description": "The protocol credits the requested amount rather than the actual balance delta, so fee-on-transfer or rebasing tokens desynchronize shares.",
+      "exploit": "Deposit a FoT token; the vault owes more shares than assets received. Later withdraw more than the pool holds.",
+      "remediation": "Measure balance before and after every transfer and account the delta.",
+      "proof_obligation": "FoT and rebasing fixtures cannot inflate shares or steal value.",
+      "real_incidents": [
+        "Multiple vault/AMM FoT findings"
+      ]
+    },
+    {
+      "id": "AV-CREATE2-METAMORPHIC",
+      "title": "CREATE2 metamorphic implementation swap",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC10:2026",
+      "cwe": [
+        "CWE-345"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "CREATE2",
+        "create2",
+        "salt"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "create2_with_selfdestruct"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-012"
+      ],
+      "description": "A CREATE2 address is trusted after first deployment; an operator can selfdestruct and redeploy different bytecode at the same address.",
+      "exploit": "Deploy honest code, pass a review, destroy, redeploy a drain at the same address.",
+      "remediation": "Hash-pin runtime bytecode, avoid selfdestruct, or treat CREATE2 identities as mutable.",
+      "proof_obligation": "The codehash at each trusted CREATE2 address cannot change after first use.",
+      "real_incidents": [
+        "Metamorphic contract research / several rug classes"
+      ]
+    },
+    {
+      "id": "AV-L2-SEQUENCER",
+      "title": "L2 sequencer downtime or stale oracle on rollup",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "lending",
+        "derivative"
+      ],
+      "owasp": "SC03:2026",
+      "cwe": [
+        "CWE-754"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "latestRoundData",
+        "AggregatorV3",
+        "sequencer"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "uses_chainlink_like",
+        "missing_sequencer_check"
+      ],
+      "related_detectors": [
+        "SOL-MED-004"
+      ],
+      "description": "An L2 protocol reads a price feed without checking the sequencer uptime feed or a heartbeat, so prices freeze during an outage.",
+      "exploit": "After a sequencer outage, liquidate or borrow against a stale price before the feed catches up.",
+      "remediation": "Check the L2 sequencer uptime feed, enforce heartbeat, and pause risky operations when stale.",
+      "proof_obligation": "Stale, incomplete, and post-outage rounds cannot authorize borrow or liquidation.",
+      "real_incidents": [
+        "Documented Chainlink L2 guidance incidents"
+      ]
+    },
+    {
+      "id": "AV-LIQUIDATION-SELF",
+      "title": "Self-liquidation or bad-debt socialization hole",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "lending"
+      ],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "liquidate",
+        "liquidationCall",
+        "seize("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_lending",
+        "liquidation_unrestricted"
+      ],
+      "related_detectors": [
+        "LEND-HIGH-003",
+        "LEND-HIGH-002",
+        "LEND-CRIT-001"
+      ],
+      "description": "A borrower can capture their own liquidation bonus, or insolvency is not recognized so healthy users become trapped.",
+      "exploit": "Flash-crash a price, liquidate yourself for the incentive, or leave bad debt that bricks withdrawals.",
+      "remediation": "Forbid self-liquidation, accrue before seize, and define a bad-debt socialization path.",
+      "proof_obligation": "Self, aliased, and undercollateralized paths cannot extract a bonus or trap solvent users.",
+      "real_incidents": [
+        "Euler 2023 (related donation/liquidation)",
+        "Several Aave-fork findings"
+      ]
+    },
+    {
+      "id": "AV-HUFF-STACK",
+      "title": "Huff stack underflow or payable fallthrough",
+      "severity": "CRITICAL",
+      "languages": [
+        "huff"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-119"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "#define macro",
+        "CALLVALUE",
+        "JUMP",
+        "JUMPI"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_huff"
+      ],
+      "related_detectors": [
+        "HUFF-CRIT-001",
+        "HUFF-HIGH-001",
+        "HUFF-HIGH-002"
+      ],
+      "description": "A Huff macro does not guarantee stack height, or a dispatcher falls through to privileged logic on short calldata or nonzero value.",
+      "exploit": "Send crafted calldata or value to underflow the stack or reach an admin path.",
+      "remediation": "Trace stack height on every branch; reject short calldata and unexpected CALLVALUE.",
+      "proof_obligation": "Every macro branch has enough operands and every selector rejects unintended value and length.",
+      "real_incidents": [
+        "Huff contest class"
+      ]
+    },
+    {
+      "id": "AV-CAIRO-AUTH",
+      "title": "Cairo/Starknet caller authorization gap",
+      "severity": "HIGH",
+      "languages": [
+        "cairo"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-862"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "#[external",
+        "get_caller_address",
+        "syscall"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "cairo_unauth_write"
+      ],
+      "related_detectors": [],
+      "description": "A Cairo external function writes storage without comparing get_caller_address to an owner or role.",
+      "exploit": "Invoke the external entry point from an arbitrary account.",
+      "remediation": "Assert caller against the stored owner or a component AccessControl role.",
+      "proof_obligation": "Every storage-writing external function authenticates the caller.",
+      "real_incidents": [
+        "Starknet contest class"
+      ]
+    },
+    {
+      "id": "AV-SWAY-AUTH",
+      "title": "Sway/Fuel msg_sender authorization gap",
+      "severity": "HIGH",
+      "languages": [
+        "sway"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-862"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "#[storage(write",
+        "msg_sender",
+        "abi "
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "sway_unauth_write"
+      ],
+      "related_detectors": [],
+      "description": "A storage(write) ABI method does not require msg_sender to match the owner.",
+      "exploit": "Call the ABI method from an unauthorized identity.",
+      "remediation": "Require msg_sender().unwrap() == storage.owner.read().",
+      "proof_obligation": "Every write method authenticates the caller.",
+      "real_incidents": [
+        "Fuel/Sway contest class"
+      ]
+    },
+    {
+      "id": "AV-TACT-AUTH",
+      "title": "Tact/TON receiver without sender check",
+      "severity": "HIGH",
+      "languages": [
+        "tact"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-862"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "receive(",
+        "sender()",
+        "self.owner"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "tact_unauth_receive"
+      ],
+      "related_detectors": [],
+      "description": "A Tact receiver mutates owner-controlled state without comparing sender() to the owner.",
+      "exploit": "Send the message from an arbitrary TON account.",
+      "remediation": "Require sender() == self.owner before privileged mutations.",
+      "proof_obligation": "Every privileged receiver authenticates sender().",
+      "real_incidents": [
+        "TON contest class"
+      ]
+    },
+    {
+      "id": "AV-DONATION-HEALTH",
+      "title": "Donation or reserve path skips the solvency check",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "lending"
+      ],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "donateToReserves",
+        "donateTo",
+        "function donate",
+        "donate("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "donation_skips_health"
+      ],
+      "related_detectors": [
+        "LEND-HIGH-003",
+        "LEND-CRIT-001"
+      ],
+      "description": "A donate/reserve function reduces collateral or equity without running the same account-health check as withdraw, borrow, or liquidate.",
+      "exploit": "Flash-loan, loop leverage, donate collateral to reserves while debt stays, then self-liquidate at a discount and repay the loan.",
+      "remediation": "Call the canonical health/liquidity check on every path that reduces collateral, including donations and reserve transfers. Treat donate as a withdraw.",
+      "proof_obligation": "Every balance-reducing entry, including donate, reverts when it would leave the account under the liquidation threshold.",
+      "real_incidents": [
+        "Euler Finance March 2023 (~$197M)"
+      ]
+    },
+    {
+      "id": "AV-PERMISSIONLESS-MARKET",
+      "title": "Permissionless market or strategy registration treated as trusted",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "staking",
+        "vault",
+        "amm"
+      ],
+      "owasp": "SC04:2026",
+      "cwe": [
+        "CWE-345",
+        "CWE-862"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        "registerMarket",
+        "addMarket",
+        "createMarket",
+        "newMarket"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "permissionless_market_register"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-005",
+        "PROJECT-AUTH-001"
+      ],
+      "description": "Anyone can register a market, pool, or strategy that later supplies prices, rewards, or callbacks. The protocol treats that address as honest.",
+      "exploit": "Register a fake SY/market, re-enter harvest, inflate a balance-delta reward, and drain real assets attributed to the fake market.",
+      "remediation": "Allowlist markets, require a timelocked governance add, and never measure rewards as an untrusted balance delta.",
+      "proof_obligation": "An arbitrary contract cannot become a reward or price source without a privileged, delayed listing.",
+      "real_incidents": [
+        "Penpie September 2024 (~$27M)"
+      ]
+    },
+    {
+      "id": "AV-CALLBACK-UNVALIDATED",
+      "title": "Flash-loan, hook, or zap callback accepts attacker parameters",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "lending",
+        "amm",
+        "vault"
+      ],
+      "owasp": "SC04:2026",
+      "cwe": [
+        "CWE-862"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        "onFlashLoan",
+        "onFlashloan",
+        "executeOperation",
+        "unlockCallback",
+        "afterSwap"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "unauthenticated_callback"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-004"
+      ],
+      "description": "A callback meant for a pool, lender, or hook does not bind caller, initiator, and the encoded action, so it can be invoked as a confused deputy.",
+      "exploit": "Call the callback directly with another user's position parameters (or a crafted hook) and steal collateral that the user approved to the zap.",
+      "remediation": "Require msg.sender to be the canonical pool, bind initiator, hash the intended action, and never trust leftover approvals on helper contracts.",
+      "proof_obligation": "Direct calls and substituted parameters revert; standing zap approvals cannot close or reopen a third-party position.",
+      "real_incidents": [
+        "Prisma MigrateTroveZap March 2024 (~$12M)"
+      ]
+    },
+    {
+      "id": "AV-CLAMM-TICK",
+      "title": "Concentrated-liquidity tick-boundary double count",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "amm"
+      ],
+      "owasp": "SC07:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [
+        "SWC-101"
+      ],
+      "required_any_patterns": [
+        "nextSqrtP",
+        "baseL",
+        "nearestCurrentTick"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "clamm_tick_equality_risk"
+      ],
+      "related_detectors": [
+        "AMM-MED-001",
+        "SOL-HIGH-011"
+      ],
+      "description": "When sqrtP sits exactly on a tick, liquidity is added both to the in-range accumulator and again when the tick is crossed.",
+      "exploit": "Flash-loan a multi-tick swap that parks price on a boundary, mint, cross, and withdraw the double-counted liquidity.",
+      "remediation": "Treat equality of sqrtP and nextSqrtP as a first-class case. Fuzz tick-boundary crossings and exact-tick mints.",
+      "proof_obligation": "Mint + cross at an exact tick never increases active liquidity by more than the minted amount.",
+      "real_incidents": [
+        "KyberSwap Elastic November 2023 (~$46M)"
+      ]
+    },
+    {
+      "id": "AV-LST-EXRATE",
+      "title": "Liquid-staking exchange rate used as a spot oracle",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "lending",
+        "vault",
+        "derivative"
+      ],
+      "owasp": "SC03:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "stEthPerToken",
+        "tokensPerStEth",
+        "getPooledEthByShares",
+        "getExchangeRate",
+        "convertToAssets"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "uses_lst_exchange_rate",
+        "value_depends_on_price"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-001",
+        "LEND-HIGH-004",
+        "PROJECT-ORACLE-001"
+      ],
+      "description": "Collateral or mint logic prices an LST/LRT from a same-block share/asset rate or a thin wrapper, which a donation or rebase can move.",
+      "exploit": "Donate into the rate source or use a wrapper with manipulable totalAssets, borrow against the inflated LST, restore.",
+      "remediation": "Use an independent oracle with a freshness bound, or a liquidity-weighted TWAP, never a raw exchangeRate() as USD.",
+      "proof_obligation": "A same-transaction donation or rebase cannot increase borrow power.",
+      "real_incidents": [
+        "Multiple LST/LRT oracle contest findings 2023-2025"
+      ]
+    },
+    {
+      "id": "AV-UNISWAP-V4-HOOK",
+      "title": "Uniswap v4 / hook callback trust",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "amm",
+        "vault"
+      ],
+      "owasp": "SC04:2026",
+      "cwe": [
+        "CWE-362",
+        "CWE-841"
+      ],
+      "swc": [
+        "SWC-107"
+      ],
+      "required_any_patterns": [
+        "beforeSwap",
+        "afterSwap",
+        "beforeAddLiquidity",
+        "IHooks",
+        "unlockCallback"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "has_hooks"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-001",
+        "SOL-HIGH-004"
+      ],
+      "description": "A v4-style hook or unlock callback mutates balances or prices and is reachable from an untrusted pool or during a transient unlock.",
+      "exploit": "Attach a malicious hook, or re-enter through unlockCallback, and observe or steal reserves mid-swap.",
+      "remediation": "Authenticate the pool, keep hooks CEI-safe, and treat unlock as a reentrancy window.",
+      "proof_obligation": "Hook and unlock paths cannot be invoked by an arbitrary caller and cannot observe inconsistent reserves.",
+      "real_incidents": [
+        "Uniswap v4 hook audit class 2024-2025"
+      ]
+    },
+    {
+      "id": "AV-PERMIT2",
+      "title": "Permit2 transfer does not bind the pulled token",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-294",
+        "CWE-347"
+      ],
+      "swc": [
+        "SWC-121"
+      ],
+      "required_any_patterns": [
+        "permitTransferFrom",
+        "Permit2"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "permit2_token_unbound"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-010",
+        "SOL-HIGH-023"
+      ],
+      "description": "permitTransferFrom accepts a caller-supplied PermitTransferFrom whose token is never checked against the expected asset (for example the vault's USDC).",
+      "exploit": "Sign or reuse a permit for a worthless token, pass it as permitData, and settle a deposit or liquidation as if the real asset arrived.",
+      "remediation": "Require permit.permitted.token == asset (or the function's token argument) before calling permitTransferFrom.",
+      "proof_obligation": "A permit whose token is not the expected asset reverts; a matching-token permit still works.",
+      "real_incidents": [
+        "Revert Lend C4 2024 H-01"
+      ]
+    },
+    {
+      "id": "AV-ERC7540-ASYNC",
+      "title": "Async vault request/claim accounting desync",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "vault",
+        "staking"
+      ],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "requestDeposit",
+        "requestRedeem",
+        "ERC7540",
+        "pendingDepositRequest"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_async_vault"
+      ],
+      "related_detectors": [
+        "LEND-CRIT-002",
+        "SOL-MED-010"
+      ],
+      "description": "An ERC-7540-style async vault prices a claim against a later share rate, or lets a controller steal a pending request.",
+      "exploit": "Request at one rate, inflate or crash totalAssets before claim, or take over controller and claim someone else's request.",
+      "remediation": "Snapshot the rate at request time or bound slippage on claim; bind controller and owner; lock pending assets.",
+      "proof_obligation": "A pending request cannot be claimed by a stranger or at an attacker-moved rate outside the user's bound.",
+      "real_incidents": [
+        "ERC-7540 / async vault contest class 2024-2025"
+      ]
+    },
+    {
+      "id": "AV-AA-VALIDATION",
+      "title": "ERC-4337 validateUserOp reads mutable third-party state",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-362"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "validateUserOp",
+        "EntryPoint",
+        "paymaster"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_account_abstraction"
+      ],
+      "related_detectors": [],
+      "description": "Account or paymaster validation makes external calls or reads storage an adversary can change between simulation and execution.",
+      "exploit": "Grief the bundler (validation passes, execution reverts) or drain a paymaster that trusted a mutable allowance.",
+      "remediation": "Keep validateUserOp free of untrusted external calls; bound paymaster gas; do not read third-party allowances.",
+      "proof_obligation": "Validation is a function of the userOp, the account's own storage, and block values the ERC allows.",
+      "real_incidents": [
+        "ERC-4337 paymaster / validation contest class"
+      ]
+    },
+    {
+      "id": "AV-REWARD-DELTA",
+      "title": "Rewards measured as an untrusted balance delta",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "staking",
+        "vault"
+      ],
+      "owasp": "SC08:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [
+        "SWC-107"
+      ],
+      "required_any_patterns": [
+        "redeemRewards",
+        "harvest",
+        "claimRewards",
+        "batchHarvest"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "reward_measured_as_balance_delta"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-001",
+        "STAKE-CRIT-002"
+      ],
+      "description": "A harvest computes rewards as token.balanceOf(this) after an external redeem minus the snapshot before. A re-entering or fake market can deposit during the call.",
+      "exploit": "Re-enter harvest (or register a fake market that deposits during redeemRewards) so the delta is attacker capital, minted as shares, then withdrawn.",
+      "remediation": "Use explicit reward amounts from a trusted interface, take a reentrancy lock, and never treat a balance delta from an untrusted callee as income.",
+      "proof_obligation": "A re-entrant deposit or fake market cannot increase credited rewards.",
+      "real_incidents": [
+        "Penpie September 2024"
+      ]
+    },
+    {
+      "id": "AV-DOMAIN-SEPARATOR-ARG",
+      "title": "Caller-supplied EIP-712 domainSeparator",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-294",
+        "CWE-347"
+      ],
+      "swc": [
+        "SWC-121",
+        "SWC-117"
+      ],
+      "required_any_patterns": [
+        "domainSeparator"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "user_supplied_domain_separator"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-010",
+        "SOL-CRIT-014"
+      ],
+      "description": "A forwarder or meta-tx verifier takes domainSeparator as a function argument and hashes \\x19\\x01 || callerDomain || structHash. The signer does not bind chainId or verifyingContract on-chain.",
+      "exploit": "Replay a signature produced for chain A / token A against the same forwarder on chain B or against another token that shares the forwarder.",
+      "remediation": "Compute the domain separator on-chain (EIP-712 name, version, chainId, verifyingContract) and ignore any caller-supplied domain.",
+      "proof_obligation": "A signature whose domain was built for a different chainId or verifyingContract reverts.",
+      "real_incidents": [
+        "Next Generation C4 2025 H-01"
+      ]
+    },
+    {
+      "id": "AV-ORACLE-DECIMALS",
+      "title": "Chainlink answer scaled with hardcoded 1e18",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC08:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [
+        "SWC-101"
+      ],
+      "required_any_patterns": [
+        "latestRoundData",
+        "getPrecision"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "oracle_decimal_mismatch"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-001",
+        "PROJECT-ORACLE-001"
+      ],
+      "description": "An adapter reads AggregatorV3.latestRoundData() and treats the answer as 1e18 (or getPrecision() == 1e18) without multiplying by 10 ** (18 - feed.decimals()). ETH/USD and many USD feeds are 8 decimals.",
+      "exploit": "The protocol under- or over-values collateral by 10^10, so a tiny deposit mints a huge share balance or a healthy position looks insolvent.",
+      "remediation": "Scale answer by 10 ** (targetDecimals - feed.decimals()) and pin the expected decimals.",
+      "proof_obligation": "An 8-decimal feed and an 18-decimal feed produce the same 1e18-normalized price.",
+      "real_incidents": [
+        "BakerFi C4 2024 H-01",
+        "NOYA C4 2024 H-01"
+      ]
+    },
+    {
+      "id": "AV-WHITELIST-GAP",
+      "title": "Whitelist mode does not cover burn or redeem",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-863"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        "WHITELIST_ENABLED"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "whitelist_burn_gap"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-005",
+        "PROJECT-AUTH-001"
+      ],
+      "description": "A transfer-state machine has a WHITELIST_ENABLED mode but a burn/redeem path (to == address(0)) is still reachable for blacklisted or non-whitelisted accounts.",
+      "exploit": "A blacklisted or non-whitelisted holder burns or redeems while transfers are supposed to be restricted to the allow-list.",
+      "remediation": "Apply the same whitelist/blacklist predicate to every balance mutation, including burn and redeem.",
+      "proof_obligation": "burn/redeem from a non-whitelisted or blacklisted account reverts in WHITELIST_ENABLED.",
+      "real_incidents": [
+        "Ethena Labs C4 2024 M-01/M-02"
+      ]
+    },
+    {
+      "id": "AV-BAD-DEBT-UNMARKED",
+      "title": "Liquidation does not write off remaining bad debt",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "lending"
+      ],
+      "owasp": "SC08:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [
+        "SWC-101"
+      ],
+      "required_any_patterns": [
+        "liquidate"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "is_lending",
+        "liquidation_unrestricted"
+      ],
+      "related_detectors": [
+        "LEND-HIGH-003",
+        "LEND-CRIT-001"
+      ],
+      "description": "liquidate() seizes collateral but never marks the leftover debt as bad debt. Repeating the call or leaving the last lender holding the bag can lock the pair.",
+      "exploit": "Liquidate an insolvent borrower once (or repeatedly) so collateral is gone but debt shares remain, then the pair can no longer be exited or the last lender eats the loss.",
+      "remediation": "After a full liquidation, write off remaining debt shares and socialize or isolate bad debt.",
+      "proof_obligation": "A borrower whose collateral is exhausted ends with zero debt shares; the pair stays solvent.",
+      "real_incidents": [
+        "Fraxlend C4 2022 H-01/H-02"
+      ]
+    },
+    {
+      "id": "AV-ARBITRARY-ERC20-FROM",
+      "title": "Unauthenticated transferFrom of a caller-chosen from address",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-284",
+        "CWE-862"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        "transferFrom(",
+        "safeTransferFrom("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "arbitrary_erc20_from"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-005",
+        "SOL-HIGH-008"
+      ],
+      "description": "A public function calls token.transferFrom(from, ...) where from is a function argument and there is no authorization. Anyone who has approved this contract can have their tokens pulled by a stranger.",
+      "exploit": "Find a victim who approved the contract. Call the function with from=victim, to=attacker (or this), and drain the allowance.",
+      "remediation": "Hard-code from as msg.sender, or require msg.sender == from / an operator role before the pull.",
+      "proof_obligation": "An unrelated caller cannot transferFrom a third party's tokens even when that party approved this contract.",
+      "real_incidents": [
+        "Slither arbitrary-send-erc20 class",
+        "Multiple router/helper allowance drains"
+      ]
+    },
+    {
+      "id": "AV-ARBITRARY-ETH-SEND",
+      "title": "Unauthenticated ETH send to a caller-chosen address",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-284",
+        "CWE-862"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        ".call{value",
+        ".transfer(",
+        ".send("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "arbitrary_eth_receiver"
+      ],
+      "related_detectors": [
+        "SOL-TAINT-003",
+        "SOL-HIGH-005"
+      ],
+      "description": "A public function sends ETH to an address taken from its arguments without binding the recipient to msg.sender or a role.",
+      "exploit": "Call the function with to=attacker and empty the contract balance, or redirect a payment that was meant for someone else.",
+      "remediation": "Send only to msg.sender or to a stored owner, and authorize any payout that takes a recipient argument.",
+      "proof_obligation": "An unauthorized caller cannot choose the ETH recipient.",
+      "real_incidents": [
+        "Slither arbitrary-send-eth class",
+        "Parity wallet / unprotected withdraw variants"
+      ]
+    },
+    {
+      "id": "AV-MSG-VALUE-LOOP",
+      "title": "msg.value reused inside a loop",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [
+        "SWC-105"
+      ],
+      "required_any_patterns": [
+        "msg.value"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "msg_value_in_loop"
+      ],
+      "related_detectors": [
+        "SOL-MED-012"
+      ],
+      "description": "A loop credits or spends msg.value on every iteration. One payment is applied N times.",
+      "exploit": "Call the batched function with a small msg.value and a long array so each element is treated as fully paid.",
+      "remediation": "Split msg.value across iterations, require sum(amounts) == msg.value, or take one payment outside the loop.",
+      "proof_obligation": "A single msg.value cannot be credited more than once.",
+      "real_incidents": [
+        "Slither msg-value-loop class",
+        "Batch-deposit contest findings"
+      ]
+    },
+    {
+      "id": "AV-LOCKED-ETHER",
+      "title": "Payable contract with no ETH withdraw path",
+      "severity": "MEDIUM",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-691"
+      ],
+      "swc": [
+        "SWC-132"
+      ],
+      "required_any_patterns": [
+        "receive()",
+        "fallback()"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "locked_ether"
+      ],
+      "related_detectors": [],
+      "description": "The contract accepts ETH via receive/fallback (or a payable function) but never sends ETH out, so deposited ether is permanently locked.",
+      "exploit": "Any ETH sent to the contract, including leftover change or a mistaken transfer, cannot be recovered.",
+      "remediation": "Add an authorized withdraw, or remove payable/receive if the contract is not supposed to hold ETH.",
+      "proof_obligation": "ETH that arrives through receive/fallback can leave through a documented path.",
+      "real_incidents": [
+        "Slither locked-ether class",
+        "Multiple 'forgot withdraw' contest Mediums"
+      ]
+    },
+    {
+      "id": "AV-ENCODEPACKED-COLLISION",
+      "title": "abi.encodePacked hash collision of adjacent dynamic types",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-327"
+      ],
+      "swc": [
+        "SWC-133"
+      ],
+      "required_any_patterns": [
+        "abi.encodePacked"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "encode_packed_collision"
+      ],
+      "related_detectors": [],
+      "description": "keccak256(abi.encodePacked(string/bytes, string/bytes)) is not injective. Different pairs can hash to the same digest and pass a signature, merkle proof, or commit.",
+      "exploit": "Craft two dynamic values whose concatenation equals a victim payload and replay a signature or collide a merkle leaf.",
+      "remediation": "Use abi.encode (length-prefixed) or insert a fixed-width separator between dynamic fields.",
+      "proof_obligation": "No two distinct dynamic tuples produce the same packed hash used for authorization.",
+      "real_incidents": [
+        "Slither encode-packed-collision class",
+        "Historical merkle/signature packing collisions"
+      ]
+    },
+    {
+      "id": "AV-UNCHECKED-CALL",
+      "title": "Low-level call or send return value ignored",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-252"
+      ],
+      "swc": [
+        "SWC-104"
+      ],
+      "required_any_patterns": [
+        ".call(",
+        ".call{",
+        ".send("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "unchecked_lowlevel_call"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-008"
+      ],
+      "description": "A .call / .send result is discarded. Failed transfers look successful and accounting can credit value that never moved.",
+      "exploit": "Force the callee to revert (or be a contract that rejects ETH) so the send fails while the protocol still marks the user paid.",
+      "remediation": "Capture (bool ok, bytes memory data) and require(ok); prefer call+check over send.",
+      "proof_obligation": "A reverting recipient cannot be treated as paid.",
+      "real_incidents": [
+        "Slither unused-return / unchecked-lowlevel class",
+        "King-of-the-ether style failed-send bugs"
+      ]
+    },
+    {
+      "id": "AV-BALANCE-EQ",
+      "title": "Strict equality on ETH or token balance",
+      "severity": "MEDIUM",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-697"
+      ],
+      "swc": [
+        "SWC-132"
+      ],
+      "required_any_patterns": [
+        "address(this).balance",
+        "balanceOf("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "balance_strict_eq"
+      ],
+      "related_detectors": [],
+      "description": "Logic uses == or != on address(this).balance or token.balanceOf. Force-sent ETH, fee-on-transfer, or a donation breaks the comparison.",
+      "exploit": "selfdestruct/beacon-force ETH into the contract, or donate a token, so a == 0 / == amount gate never passes or is skipped.",
+      "remediation": "Compare with >= / <= against tracked accounting, never against a raw balance.",
+      "proof_obligation": "Force-sent ETH and FoT donations cannot brick or bypass the comparison.",
+      "real_incidents": [
+        "Slither incorrect-equality class",
+        "Multiple vault empty-check DoS findings"
+      ]
+    },
+    {
+      "id": "AV-MAPPING-DELETE",
+      "title": "delete on a mapping of structs leaves nested mappings",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-664"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "delete "
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "mapping_delete_struct"
+      ],
+      "related_detectors": [],
+      "description": "delete users[id] zeros value fields of a struct but does not clear mapping members inside that struct. Stale nested entries survive a 'reset'.",
+      "exploit": "Reuse an id after delete and inherit the previous owner's nested mapping (allowances, balances, flags).",
+      "remediation": "Iterate and delete nested mapping keys, or bump a generation/nonce instead of delete.",
+      "proof_obligation": "After delete, every nested mapping key of that struct reads as the zero value.",
+      "real_incidents": [
+        "Slither mapping-deletion class",
+        "Account-reuse contest findings"
+      ]
+    }
+  ]
+}

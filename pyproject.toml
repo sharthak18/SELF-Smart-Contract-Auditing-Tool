@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "self-auditor"
-version = "2.3.0"
+version = "2.4.0"
 description = "Local multi-language smart contract security auditing and pre-audit analysis."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -52,4 +52,5 @@ self_tool = [
   "knowledge/*.json",
   "knowledge/exploits/*.json",
   "knowledge/exploits/**/*.json",
+  "knowledge/brain/*.json",
 ]

@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "kind": "language_semantics",
+  "reviewed_at": "2026-08-25",
+  "languages": [
+    {
+      "id": "solidity",
+      "name": "Solidity",
+      "extensions": [".sol"],
+      "families": ["evm"],
+      "auth_primitives": ["msg.sender", "tx.origin", "onlyOwner", "onlyRole", "AccessControl", "Ownable"],
+      "value_primitives": ["msg.value", "call{value", "transfer(", "send(", "selfdestruct"],
+      "external_call_primitives": [".call(", ".delegatecall(", ".staticcall(", ".call{"],
+      "upgrade_primitives": ["delegatecall", "upgradeTo", "initialize", "UUPSUpgradeable", "TransparentUpgradeableProxy"],
+      "hazard_notes": [
+        "msg.sender changes across an external call; tx.origin does not.",
+        "delegatecall executes foreign code in the caller storage context.",
+        "Pre-0.8 arithmetic wraps; 0.8+ reverts unless unchecked.",
+        "ERC-777/721/1155 hooks re-enter during transfer.",
+        "address.balance can be forced via selfdestruct or beacon roots."
+      ],
+      "default_visibility_risk": "Functions without a visibility specifier do not compile on modern Solidity; state vars default to internal."
+    },
+    {
+      "id": "vyper",
+      "name": "Vyper",
+      "extensions": [".vy", ".vyi"],
+      "families": ["evm"],
+      "auth_primitives": ["msg.sender", "self.owner"],
+      "value_primitives": ["msg.value", "send(", "raw_call("],
+      "external_call_primitives": ["raw_call(", "send("],
+      "upgrade_primitives": ["create_from_blueprint", "create_minimal_proxy_to"],
+      "hazard_notes": [
+        "0.2.x top-level defs default to public/external.",
+        "raw_call revert_on_failure default changed across versions.",
+        "@nonreentrant was broken in 0.2.15-0.3.0 (Curve 2023).",
+        "0.3.7 had a storage-corruption compiler bug.",
+        "send() forwards 2300 gas and returns a bool that must be checked."
+      ],
+      "default_visibility_risk": "Vyper 0.2.x public-by-default; 0.3+ requires @external/@internal."
+    },
+    {
+      "id": "huff",
+      "name": "Huff",
+      "extensions": [".huff"],
+      "families": ["evm"],
+      "auth_primitives": ["CALLER", "ORIGIN"],
+      "value_primitives": ["CALLVALUE", "CALL", "SELFDESTRUCT"],
+      "external_call_primitives": ["CALL", "DELEGATECALL", "STATICCALL"],
+      "upgrade_primitives": ["DELEGATECALL"],
+      "hazard_notes": [
+        "No type system or automatic overflow checks.",
+        "Stack height is the programmer's responsibility.",
+        "Short calldata can fall through a dispatcher."
+      ],
+      "default_visibility_risk": "All bytecode is reachable if the dispatcher does not revert."
+    },
+    {
+      "id": "rust",
+      "name": "Rust / Anchor / Solana",
+      "extensions": [".rs"],
+      "families": ["solana"],
+      "auth_primitives": ["Signer", "has_one", "constraint", "is_signer"],
+      "value_primitives": ["try_borrow_mut_lamports", "token::transfer", "close"],
+      "external_call_primitives": ["invoke", "invoke_signed", "cpi::"],
+      "upgrade_primitives": ["bpf_loader_upgradeable", "SetAuthority"],
+      "hazard_notes": [
+        "AccountInfo is unchecked; prefer typed Account/Signer.",
+        "CPI program id must be constrained.",
+        "PDAs need canonical bump.",
+        "Duplicate mutable accounts alias state.",
+        "Token vs Token-2022 program identity matters.",
+        "Sysvars passed as AccountInfo can be spoofed."
+      ],
+      "default_visibility_risk": "Anchor constraints are opt-in; missing Signer is silent."
+    },
+    {
+      "id": "move",
+      "name": "Move (Aptos / Sui)",
+      "extensions": [".move"],
+      "families": ["move"],
+      "auth_primitives": ["signer", "assert!(signer", "&signer"],
+      "value_primitives": ["move_to", "move_from", "borrow_global_mut"],
+      "external_call_primitives": [],
+      "upgrade_primitives": ["package::upgrade", "compatibility"],
+      "hazard_notes": [
+        "Resources cannot be copied or dropped unless abilities allow it.",
+        "Entry functions must validate the signer.",
+        "Capabilities are bearer instruments — losing one is losing auth."
+      ],
+      "default_visibility_risk": "public entry is an ABI surface; friend/public need explicit review."
+    },
+    {
+      "id": "cairo",
+      "name": "Cairo / Starknet",
+      "extensions": [".cairo"],
+      "families": ["starknet"],
+      "auth_primitives": ["get_caller_address", "Ownable", "AccessControl"],
+      "value_primitives": ["transfer", "syscalls"],
+      "external_call_primitives": ["call_contract_syscall"],
+      "upgrade_primitives": ["replace_class_syscall", "Upgradeable"],
+      "hazard_notes": [
+        "get_caller_address is the only caller identity.",
+        "Upgradeability is a class-hash replacement.",
+        "Felt arithmetic wraps at the field prime."
+      ],
+      "default_visibility_risk": "#[external] / #[external(v0)] is the public ABI."
+    },
+    {
+      "id": "sway",
+      "name": "Sway / Fuel",
+      "extensions": [".sw"],
+      "families": ["fuel"],
+      "auth_primitives": ["msg_sender", "AccessControl"],
+      "value_primitives": ["msg_amount", "transfer"],
+      "external_call_primitives": ["abi("],
+      "upgrade_primitives": [],
+      "hazard_notes": [
+        "msg_sender() returns Result and must be unwrapped carefully.",
+        "Storage writes require #[storage(write)]."
+      ],
+      "default_visibility_risk": "abi methods are externally callable."
+    },
+    {
+      "id": "tact",
+      "name": "Tact / TON",
+      "extensions": [".tact"],
+      "families": ["ton"],
+      "auth_primitives": ["sender()", "context().sender", "self.owner"],
+      "value_primitives": ["self.reply", "send", "nativeReserve"],
+      "external_call_primitives": ["send("],
+      "upgrade_primitives": [],
+      "hazard_notes": [
+        "TON is message-oriented; bounced messages must be handled.",
+        "sender() is the immediate previous contract, not the original user.",
+        "Value must be reserved or the contract can be drained by bounce fees."
+      ],
+      "default_visibility_risk": "receive() and external() are the public ABI."
+    }
+  ]
+}

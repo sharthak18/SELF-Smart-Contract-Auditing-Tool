@@ -46,6 +46,23 @@ fixes are all welcome.
 5. Add a test under `tests/test_<lang>_detectors.py` covering the
    happy path and one regression case.
 
+## Extending the autonomous brain
+
+Playbooks live under `self_tool/knowledge/brain/`. A new attack vector
+is a JSON object with `id`, `title`, `severity`, language/protocol
+filters, source patterns, fact predicates, and a real-incident list.
+Run `self train` after editing so the local index picks it up. Keep
+payload-free: describe the class, not a weaponized exploit.
+
+**Prefer brain JSON over `exploits.json` for new real-world lessons.**
+Appending `exploits.json` mints a catalog detector and a review
+profile. Recent post-mortems, contest findings, and auditor tactics
+belong in `incidents.json` or `expert_tactics.json` so they train
+retrieval and playbook weights without breaking catalog parity.
+
+`self_tool/autonomous/` must not be imported from `DetectorEngine` or
+the default scan path. `tests/test_autonomous.py` enforces this.
+
 ## Adding a project-level detector
 
 1. Place the module under `self_tool/detectors/project/`. Implement

@@ -604,6 +604,9 @@ _SUBCOMMANDS = {
     "feedback": ("self_tool.cli.feedback", "feedback"),
     "calibrate": ("self_tool.cli.calibration", "calibrate"),
     "graph": ("self_tool.cli.graph_cmd", "graph"),
+    "autonomous": ("self_tool.cli.autonomous", "autonomous"),
+    "agent": ("self_tool.cli.autonomous", "autonomous"),
+    "train": ("self_tool.cli.autonomous", "train"),
 }
 
 
