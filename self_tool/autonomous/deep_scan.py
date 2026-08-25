@@ -11,8 +11,9 @@ No catalog detectors. Facts and location only.
 from __future__ import annotations
 
 import re
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
+from self_tool.autonomous.invariants import TRANSIENT_KILLER_RE, TSTORE_WRITE_RE
 from self_tool.autonomous.models import ExtractedContract, ExtractedFunction
 
 
@@ -75,6 +76,23 @@ MAPPING_TO_RE = re.compile(
     r"mapping\s*\([^)]*?=>\s*(\w+)\s*\)\s*(?:public|private|internal|external)?\s*(\w+)",
 )
 DELETE_INDEX_RE = re.compile(r"\bdelete\s+(\w+)\s*\[")
+# --- second-order reentrancy -------------------------------------------------
+# A low-level call that hands control to the callee.
+LOW_CALL_RE = re.compile(r"\.call\s*\{|\.call\s*\(")
+# Reentrancy guards: a modifier or an inline status/lock flag.
+REENTRANCY_GUARD_RE = re.compile(
+    r"\bnonReentrant\b|\bnoReentrant\b|\bnonReenter\b|\bReentrancyGuard\b|"
+    r"_status\s*=\s*_?NOT_ENTERED|\block\s*=\s*2\b|\b_locked\s*=\s*(?:1|true)\b",
+    re.IGNORECASE,
+)
+GUARD_MODIFIERS = {"nonreentrant", "noreentrant", "nonreenter", "noreenter", "lock", "mutex"}
+# An assignment to something that looks like value / accounting state.
+VALUE_WRITE_RE = re.compile(r"([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*(?:=[^=>]|\+=|-=|\*=|/=)")
+VALUE_STATE_RE = re.compile(
+    r"balance|shares?|debt|owed|deposit|claim|reserve|credit|allowance|"
+    r"stake|assets?|principal|supply|collateral",
+    re.IGNORECASE,
+)
 _SKIP_FUNCS = {"constructor", "receive", "fallback", "__default__", "__init__"}
 
 
@@ -82,6 +100,12 @@ def deep_facts(contracts: Sequence[ExtractedContract], combined: str) -> Dict[st
     functions = [func for contract in contracts for func in contract.functions]
     public = [func for func in functions if _is_public(func) and func.name.lower() not in _SKIP_FUNCS]
     unauth = [func for func in public if not _is_authed(func)]
+
+    second_order = False
+    for func, table in _public_with_helpers(contracts):
+        if _second_order_reentrancy(func, table):
+            second_order = True
+            break
 
     return {
         "arbitrary_erc20_from": any(_arbitrary_transfer_from(func) for func in unauth),
@@ -94,7 +118,28 @@ def deep_facts(contracts: Sequence[ExtractedContract], combined: str) -> Dict[st
         "unchecked_lowlevel_call": any(_unchecked_call(func) for func in public),
         "balance_strict_eq": any(BALANCE_EQ_RE.search(func.body or "") for func in public),
         "mapping_delete_struct": _mapping_delete(combined, functions),
+        "second_order_reentrancy": second_order,
     }
+
+
+def _helper_table(contract: ExtractedContract) -> Dict[str, ExtractedFunction]:
+    table: Dict[str, ExtractedFunction] = {}
+    for func in contract.functions:
+        table.setdefault(func.name, func)
+    return table
+
+
+def _public_with_helpers(
+    contracts: Sequence[ExtractedContract],
+) -> List[Tuple[ExtractedFunction, Dict[str, ExtractedFunction]]]:
+    """Public functions paired with the helper table of their own contract."""
+    pairs: List[Tuple[ExtractedFunction, Dict[str, ExtractedFunction]]] = []
+    for contract in contracts:
+        table = _helper_table(contract)
+        for func in contract.functions:
+            if _is_public(func) and func.name.lower() not in _SKIP_FUNCS:
+                pairs.append((func, table))
+    return pairs
 
 
 def locate_deep(
@@ -107,6 +152,12 @@ def locate_deep(
     public = [func for func in functions if _is_public(func) and func.name.lower() not in _SKIP_FUNCS]
     unauth = [func for func in public if not _is_authed(func)]
 
+    if fact == "second_order_reentrancy":
+        for func, table in _public_with_helpers(contracts):
+            if _second_order_reentrancy(func, table):
+                return func.file, func.line, func.language, f"{func.contract}.{func.name}"
+        return None
+
     checkers = {
         "arbitrary_erc20_from": (unauth, _arbitrary_transfer_from),
         "arbitrary_eth_receiver": (unauth, _arbitrary_eth_send),
@@ -115,6 +166,7 @@ def locate_deep(
         "unchecked_lowlevel_call": (public, _unchecked_call),
         "balance_strict_eq": (public, lambda f: bool(BALANCE_EQ_RE.search(f.body or ""))),
         "mapping_delete_struct": (functions, lambda f: _mapping_delete(combined, [f])),
+        "tstore_delete_poison": (functions, _is_tstore_poison),
         "locked_ether": (
             functions,
             lambda f: f.name.lower() in {"receive", "fallback"} or bool(RECEIVE_RE.search(f.body or "")),
@@ -230,6 +282,55 @@ def _unchecked_call(func: ExtractedFunction) -> bool:
     if CHECKED_CALL_RE.search(body):
         return False
     return True
+
+
+def _is_tstore_poison(func: ExtractedFunction) -> bool:
+    """Locator predicate mirroring invariants._tstore_delete_poison."""
+    body = func.body or ""
+    return bool(TSTORE_WRITE_RE.search(body) and TRANSIENT_KILLER_RE.search(body))
+
+
+def _is_reentrancy_guarded(func: ExtractedFunction) -> bool:
+    """A reentrancy guard on this function: modifier or inline status/lock flag."""
+    mods = {item.lower() for item in func.modifiers}
+    if mods & GUARD_MODIFIERS:
+        return True
+    if any(item.lower().startswith(("nonreentrant", "noreentrant", "nonreenter", "noreenter"))
+           for item in mods):
+        return True
+    return bool(REENTRANCY_GUARD_RE.search(func.body or ""))
+
+
+def _second_order_reentrancy(
+    func: ExtractedFunction,
+    helpers: Dict[str, ExtractedFunction],
+) -> bool:
+    """Public fn writes value state after delegating to a helper that ``.call``s.
+
+    First-order reentrancy (the public function making the call itself) is
+    already covered by ``external_call_before_write``; this is the variant a
+    naive sink scan misses because the low-level call hides one frame down.
+    """
+    body = func.body or ""
+    if _is_reentrancy_guarded(func):
+        return False
+    # The call sits directly in the public function: first-order, not our case.
+    if LOW_CALL_RE.search(body):
+        return False
+    for name, helper in helpers.items():
+        if helper is func or name == func.name:
+            continue
+        call_site = re.search(rf"(?<![.\w]){re.escape(name)}\s*\(", body)
+        if not call_site:
+            continue
+        if _is_reentrancy_guarded(helper):
+            continue
+        if not LOW_CALL_RE.search(helper.body or ""):
+            continue
+        for write in VALUE_WRITE_RE.finditer(body[call_site.end():]):
+            if VALUE_STATE_RE.search(write.group(1)):
+                return True
+    return False
 
 
 def _locked_ether(combined: str, functions: Sequence[ExtractedFunction]) -> bool:

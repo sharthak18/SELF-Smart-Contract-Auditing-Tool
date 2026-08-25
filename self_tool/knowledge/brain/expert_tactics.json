@@ -309,6 +309,33 @@
         "https://github.com/crytic/slither/wiki/Detector-Documentation",
         "https://github.com/Cyfrin/aderyn"
       ]
+    },
+    {
+      "id": "TAC-INVARIANT-FIRST",
+      "source": "Invariant-first review as practised in fuzzing and formal-methods engagements (Foundry invariant handlers, property lists) - encoded as a review lens, not a wrapper",
+      "title": "Write the property that must hold before hunting the bug",
+      "lens": "protocol-math",
+      "applies_to": [
+        "solidity",
+        "vyper",
+        "rust",
+        "move"
+      ],
+      "questions": [
+        "What quantity is conserved here, and where is it actually asserted?",
+        "Is the share price read after interest is accrued, on this path?",
+        "Does any require/assert tie totalSupply back to totalAssets?",
+        "After a swap, is reserve0 * reserve1 proven non-decreasing?",
+        "Does a borrow or liquidation re-check solvency before returning?",
+        "Can a view price be read mid-mutation from a callback?",
+        "Is every transient slot cleared before the call returns?",
+        "Does the signed digest bind chainId, verifyingContract and nonce?"
+      ],
+      "why": "Sink-hunting finds the line that looks wrong; invariants find the property that is missing. A conversion formula such as assets * totalSupply() / totalAssets() prices a share but constrains nothing, so its presence is not evidence of safety. Stating the property first turns 'review the vault' into a short list of falsifiable handlers a fuzzer can attack.",
+      "references": [
+        "https://book.getfoundry.sh/forge/invariant-testing",
+        "https://github.com/crytic/echidna"
+      ]
     }
   ]
 }

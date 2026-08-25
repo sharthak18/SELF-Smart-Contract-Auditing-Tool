@@ -8,6 +8,11 @@ from typing import Dict, List, Sequence, Set
 from self_tool.autonomous.brain import load_business_logic, load_math_models
 from self_tool.autonomous.deep_scan import deep_facts
 from self_tool.autonomous.ingest import ProjectIngestion, all_file_contexts
+from self_tool.autonomous.invariants import (
+    invariant_facts,
+    notes_for_facts,
+    propose_hypotheses,
+)
 from self_tool.autonomous.languages import extract_contracts
 from self_tool.autonomous.models import (
     ExtractedContract,
@@ -112,6 +117,7 @@ def understand(
     invariants = _invariants(contracts)
     formulas = _math_formulas(combined, types)
     deps = _external_deps(ingestion, combined)
+    hypotheses = list(propose_hypotheses(facts, types, combined))
     notes = _architecture_notes(protocol_ctx, contracts, types, facts)
     summary = _summary(protocol_ctx, types, contracts, facts)
     return ProtocolUnderstanding(
@@ -138,6 +144,7 @@ def understand(
         referenced_urls=list(protocol_ctx.referenced_urls or []),
         local_audit_files=list(protocol_ctx.local_audit_files or []),
         fetched_refs=list(protocol_ctx.fetched_refs or []),
+        hypotheses=hypotheses,
     )
 
 
@@ -336,6 +343,7 @@ def _facts(
         )),
     }
     facts.update(deep_facts(contracts, combined))
+    facts.update(invariant_facts(contracts, combined, types))
     return facts
 
 
@@ -713,6 +721,12 @@ def _architecture_notes(
         notes.append("A low-level call/.send return value is ignored.")
     if facts.get("balance_strict_eq"):
         notes.append("Strict equality on a balance — force-sent ETH or fee-on-transfer can desync it.")
+    if facts.get("second_order_reentrancy"):
+        notes.append(
+            "A public function writes value state after delegating to a helper that makes a "
+            "low-level call — second-order reentrancy, invisible to a first-frame sink scan."
+        )
+    notes.extend(notes_for_facts(facts))
     if ctx.local_audit_files:
         notes.append("Local prior-audit / security files: " + ", ".join(ctx.local_audit_files[:8]) + ".")
     if ctx.referenced_urls:

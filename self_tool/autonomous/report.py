@@ -116,6 +116,19 @@ def render_markdown(audit: AutonomousAudit) -> str:
         lines.extend(["", "### Extracted guards (candidates, not proofs)", ""])
         lines.extend(f"- `{_cell(item)}`" for item in u.invariants[:25])
 
+    if u.hypotheses:
+        lines.extend([
+            "",
+            "### Must-hold invariants (hypotheses, not proofs)",
+            "",
+            "SELF derived these from the protocol's own accounting shape. Each is a",
+            "property that *should* hold; SELF cannot execute an EVM and has not",
+            "proven any of them. Drop each one into a Foundry invariant handler and",
+            "let the fuzzer try to break it.",
+            "",
+        ])
+        lines.extend(f"- {_cell(item)}" for item in u.hypotheses)
+
     lines.extend([
         "",
         "## Findings summary",

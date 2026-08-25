@@ -85,6 +85,8 @@ class ProtocolUnderstanding:
     referenced_urls: List[str] = field(default_factory=list)
     local_audit_files: List[str] = field(default_factory=list)
     fetched_refs: List[Dict[str, Any]] = field(default_factory=list)
+    # Must-hold properties SELF could not confirm, rendered as Foundry sketches.
+    hypotheses: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -109,6 +111,7 @@ class ProtocolUnderstanding:
             "referenced_urls": list(self.referenced_urls),
             "local_audit_files": list(self.local_audit_files),
             "fetched_refs": list(self.fetched_refs),
+            "hypotheses": list(self.hypotheses),
             "contracts": [
                 {
                     "language": c.language,
@@ -159,6 +162,11 @@ class ProtocolUnderstanding:
             lines.append("Math: " + "; ".join(self.math_formulas[:12]))
         if self.invariants:
             lines.append("Guards: " + "; ".join(self.invariants[:16]))
+        if self.hypotheses:
+            lines.append(
+                "Must-hold invariants (hypotheses, not proofs): "
+                + "; ".join(self.hypotheses[:12])
+            )
         if self.external_deps:
             lines.append("Deps: " + ", ".join(self.external_deps[:20]))
         if self.trusted_roles:
