@@ -1995,6 +1995,199 @@
         "Slither mapping-deletion class",
         "Account-reuse contest findings"
       ]
+    },
+    {
+      "id": "AV-LOWLEVEL-SUCCESS-DISCARD",
+      "title": "Low-level call success discarded before trusting return data",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC02:2026",
+      "cwe": [
+        "CWE-252",
+        "CWE-347"
+      ],
+      "swc": [
+        "SWC-104"
+      ],
+      "required_any_patterns": [
+        "staticcall(",
+        "delegatecall(",
+        ".call("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "lowlevel_call_success_discarded",
+        "return_data_decoded_without_success_check"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-015"
+      ],
+      "description": "A low-level call/staticcall/delegatecall's boolean success is discarded before its return data is decoded or compared (e.g. bytes4(returnData) == MAGIC_VALUE). A reverting callee fully controls its revert data, so a forged magic value can be accepted as a valid response.",
+      "exploit": "Deploy a contract that always reverts with the target magic bytes (e.g. EIP-1271's 0x1626ba7e) as the first four bytes of revert data; the caller's discarded success flag lets the forged, reverted call pass validation.",
+      "remediation": "Always capture and require success == true before decoding or comparing any low-level call's return data.",
+      "proof_obligation": "Every low-level call site requires success before its return data influences control flow or authorization.",
+      "real_incidents": [
+        "Gnosis Pay / Zodiac Roles & Delay modules, June 2026 ($1.5M, 5,281 wallets)"
+      ]
+    },
+    {
+      "id": "AV-COMPILER-TSTORE-POISON",
+      "title": "Solidity via-ir transient/persistent storage clearing collision",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC10:2026",
+      "cwe": [
+        "CWE-758"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "transient "
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "solc_0_8_28_to_0_8_33",
+        "via_ir_enabled",
+        "transient_and_persistent_clear_same_unit"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-016",
+        "SOL-HIGH-025"
+      ],
+      "description": "solc 0.8.28-0.8.33 compiled with --via-ir can silently swap sstore/tstore opcodes when a contract clears both a transient variable (via delete) and a persistent value of a matching type: the shared Yul helper name did not encode storage location, so whichever clearing operation is compiled first determines the opcode used for both.",
+      "exploit": "Normal legitimate use of the contract silently zeroes an unrelated persistent slot (owner, an approval, a lock) with no revert, no warning, and no source-level indicator; no attacker transaction is required to trigger the corruption, only to exploit its consequences.",
+      "remediation": "Upgrade to solc >=0.8.34 before shipping any --via-ir build that touches transient storage; as an interim workaround replace delete on transient variables with an explicit zero assignment.",
+      "proof_obligation": "The deployed bytecode's sstore/tstore opcodes at every clearing site match the reviewed source-level intent under the exact compiler version and via-ir setting used for deployment.",
+      "real_incidents": [
+        "Hexens \"TSTORE Poison\" disclosure, solc 0.8.28-0.8.33, fixed in 0.8.34 (Feb 2026)"
+      ]
+    },
+    {
+      "id": "AV-ORACLE-VIEW-UNGUARDED",
+      "title": "Price/rate/share oracle view lacks its own reentrancy guard",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "amm",
+        "lending",
+        "staking",
+        "vault"
+      ],
+      "owasp": "SC08:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [
+        "SWC-107"
+      ],
+      "required_any_patterns": [
+        "get_virtual_price",
+        "getRate",
+        "pricePerShare",
+        "getPricePerFullShare"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "exposes_oracle_shaped_view",
+        "view_missing_reentrancy_guard"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-017",
+        "SOL-CRIT-003"
+      ],
+      "description": "A contract exposes a price/exchange-rate/share-value view that other protocols would integrate as an oracle, but the view itself carries no reentrancy guard even though the contract has state-mutating functions that make external calls before finishing their own accounting.",
+      "exploit": "Reenter during an external call (e.g. an ETH transfer mid-remove_liquidity) so a dependent protocol reading the oracle-shaped view observes a manipulated numerator/denominator and misprices collateral or a swap.",
+      "remediation": "Add a reentrancy guard to every externally consumed price/rate/share view so it reverts (or matches settled state) while a state-mutating call is mid-execution.",
+      "proof_obligation": "Every externally consumed price/rate/share view reverts or returns settled state while any state-mutating function in the same contract is mid-execution.",
+      "real_incidents": [
+        "Curve Finance get_virtual_price() read-only reentrancy (2023, $70M at risk)",
+        "Balancer getRate() read-only reentrancy"
+      ]
+    },
+    {
+      "id": "AV-DOMAIN-SEPARATOR-CALLER-ARG",
+      "title": "EIP-712 domain separator threaded through a function parameter",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC01:2026",
+      "cwe": [
+        "CWE-294",
+        "CWE-347"
+      ],
+      "swc": [
+        "SWC-121"
+      ],
+      "required_any_patterns": [
+        "domainSeparator",
+        "DOMAIN_SEPARATOR"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "domain_separator_is_function_parameter"
+      ],
+      "related_detectors": [
+        "SOL-CRIT-018",
+        "SOL-CRIT-010"
+      ],
+      "description": "A meta-transaction forwarder or EIP-712 verifier accepts the domain separator (or its raw components) as a function argument instead of deriving it on-chain from block.chainid and address(this), so the caller controls the very value meant to bind a signature to a specific chain and contract.",
+      "exploit": "Replay a signature produced for one chain/contract against another deployment sharing the same forwarder by resupplying the original domain separator the signature was made for.",
+      "remediation": "Derive the domain separator on-chain from block.chainid and address(this) (e.g. OpenZeppelin's EIP712 base) and never accept it or its components from the caller.",
+      "proof_obligation": "The domain separator used in every signature check is computed on-chain and cannot be influenced by caller-supplied arguments.",
+      "real_incidents": [
+        "Code4rena \"Next Generation\" 2025 H-01"
+      ]
+    },
+    {
+      "id": "AV-PERMIT-FRONTRUN-DOS",
+      "title": "Unconditional ERC-2612 permit() enables front-run griefing/DoS",
+      "severity": "HIGH",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [
+        "lending",
+        "amm",
+        "vault"
+      ],
+      "owasp": "SC09:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        ".permit("
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "unconditional_permit_call",
+        "permit_followed_by_dependent_action"
+      ],
+      "related_detectors": [
+        "SOL-HIGH-026"
+      ],
+      "description": "A router calls permit() unconditionally and then performs a dependent action (transferFrom/deposit/supply) in the same transaction without a try/catch, so anyone can front-run the permit signature directly on the token to consume the nonce and revert the victim's batched transaction.",
+      "exploit": "Extract (v, r, s) from the victim's pending transaction, submit token.permit() directly with a higher priority fee, and cause the victim's own permit call (and the whole batched transaction) to revert.",
+      "remediation": "Wrap the permit call in try/catch and fall back to checking the allowance is already sufficient before proceeding.",
+      "proof_obligation": "A permit signature consumed by a third party before the batched call executes does not cause the dependent action to revert.",
+      "real_incidents": [
+        "Widely documented ERC-2612 permit front-running griefing pattern across router/vault integrations"
+      ]
     }
   ]
 }

@@ -7,6 +7,7 @@ from self_tool.core.builtin_reviewer import review_issues
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS_DIR = ROOT / "tests" / "contracts"
+NEGATIVE_DIR = CONTRACTS_DIR / "negative"
 
 class NewDetectorsTests(unittest.TestCase):
     def test_erc_conformance(self):
@@ -56,6 +57,61 @@ class NewDetectorsTests(unittest.TestCase):
         self.assertIn("SOL-CRIT-012", issue_ids)
         self.assertIn("SOL-LOW-008", issue_ids)
         self.assertIn("SOL-LOW-009", issue_ids)
+
+    def test_zodiac_style_signature_bypass(self):
+        """SOL-CRIT-015: staticcall success discarded before magic-value compare."""
+        files, _ = discover_files(str(CONTRACTS_DIR / "ZodiacSignatureBypass.sol"))
+        engine = DetectorEngine()
+        issues = engine.run(files)
+        self.assertIn("SOL-CRIT-015", {issue.id for issue in issues})
+
+        files, _ = discover_files(str(NEGATIVE_DIR / "SafeCallResultIntegrity.sol"))
+        issues = engine.run(files)
+        self.assertNotIn("SOL-CRIT-015", {issue.id for issue in issues})
+
+    def test_tstore_poison_compiler_bug(self):
+        """SOL-CRIT-016: transient/persistent storage clearing collision (solc 0.8.28-0.8.33)."""
+        files, _ = discover_files(str(CONTRACTS_DIR / "CompilerBugTstorePoison.sol"))
+        engine = DetectorEngine()
+        issues = engine.run(files)
+        self.assertIn("SOL-CRIT-016", {issue.id for issue in issues})
+
+        files, _ = discover_files(str(NEGATIVE_DIR / "SafeCompilerPin.sol"))
+        issues = engine.run(files)
+        self.assertNotIn("SOL-CRIT-016", {issue.id for issue in issues})
+
+    def test_unguarded_oracle_view_readonly_reentrancy(self):
+        """SOL-CRIT-017: Curve-style get_virtual_price() with no reentrancy guard."""
+        files, _ = discover_files(str(CONTRACTS_DIR / "OracleReadOnlyReentrancy.sol"))
+        engine = DetectorEngine()
+        issues = engine.run(files)
+        self.assertIn("SOL-CRIT-017", {issue.id for issue in issues})
+
+        files, _ = discover_files(str(NEGATIVE_DIR / "SafeOraclePool.sol"))
+        issues = engine.run(files)
+        self.assertNotIn("SOL-CRIT-017", {issue.id for issue in issues})
+
+    def test_caller_supplied_domain_separator(self):
+        """SOL-CRIT-018: caller-supplied EIP-712 domain separator enables cross-chain replay."""
+        files, _ = discover_files(str(CONTRACTS_DIR / "DomainSeparatorArg.sol"))
+        engine = DetectorEngine()
+        issues = engine.run(files)
+        self.assertIn("SOL-CRIT-018", {issue.id for issue in issues})
+
+        files, _ = discover_files(str(NEGATIVE_DIR / "SafeDomainSeparator.sol"))
+        issues = engine.run(files)
+        self.assertNotIn("SOL-CRIT-018", {issue.id for issue in issues})
+
+    def test_permit_frontrun_dos(self):
+        """SOL-HIGH-026: unconditional permit() + dependent action is front-run DoS-able."""
+        files, _ = discover_files(str(CONTRACTS_DIR / "PermitFrontrunDos.sol"))
+        engine = DetectorEngine()
+        issues = engine.run(files)
+        self.assertIn("SOL-HIGH-026", {issue.id for issue in issues})
+
+        files, _ = discover_files(str(NEGATIVE_DIR / "SafePermitRouter.sol"))
+        issues = engine.run(files)
+        self.assertNotIn("SOL-HIGH-026", {issue.id for issue in issues})
 
 if __name__ == "__main__":
     unittest.main()
