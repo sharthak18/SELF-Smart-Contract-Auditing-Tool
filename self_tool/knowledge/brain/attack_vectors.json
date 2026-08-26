@@ -1995,6 +1995,200 @@
         "Slither mapping-deletion class",
         "Account-reuse contest findings"
       ]
+    },
+    {
+      "id": "AV-SECOND-ORDER-REENTRANCY",
+      "title": "Second-order reentrancy: value state written after a delegating payout helper",
+      "severity": "CRITICAL",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "vault",
+        "lending",
+        "amm",
+        "staking"
+      ],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-841"
+      ],
+      "swc": [
+        "SWC-107"
+      ],
+      "required_any_patterns": [
+        ".call"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "second_order_reentrancy"
+      ],
+      "related_detectors": [],
+      "description": "A public entry point delegates a transfer to an internal helper that performs a low-level .call, then writes balance/share/debt state after that helper returns. The call is one frame down, so a first-frame sink scan sees a clean public function and the reentrancy guard (if any) is on the wrong frame.",
+      "exploit": "Deploy a contract whose receive/fallback re-enters the same entry point. The helper's .call hands control back while the caller's balance is still un-updated, so the second invocation reads the stale balance and is paid again.",
+      "remediation": "Apply nonReentrant to the public entry point (not the helper), and follow check-effects-interactions: settle every balance before any value leaves.",
+      "proof_obligation": "No state read by the entry point changes as a result of a re-entrant call made during the helper's .call; equivalently, re-entry before the balance write reverts.",
+      "real_incidents": [
+        "The DAO, 2016 - canonical check-effects-interactions violation",
+        "ERC-777 / ERC-1363 tokensReceived hook re-entry class",
+        "Slither reentrancy-eth / reentrancy-no-eth detector family"
+      ]
+    },
+    {
+      "id": "AV-MISSING-ACCRUE",
+      "title": "Value path prices against a rate it never accrues",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper",
+        "rust"
+      ],
+      "protocol_types": [
+        "vault",
+        "lending",
+        "staking",
+        "derivative"
+      ],
+      "owasp": "SC04:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "convertToShares",
+        "convertToAssets",
+        "exchangeRate",
+        "pricePerShare",
+        "interestIndex",
+        "borrowIndex"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "missing_accrue_on_value_path"
+      ],
+      "related_detectors": [],
+      "description": "A deposit / withdraw / liquidate / rebalance path reads a share price or interest index without first settling accrued interest on that path. The stored rate lags the true one, so shares are minted or burned at a stale exchange rate.",
+      "exploit": "Wait for interest to accumulate off-chain without a state-updating call, then deposit or withdraw at the stale rate and capture the difference against other shareholders or the reserve.",
+      "remediation": "Accrue interest (or refresh the index) at the top of every value-moving entry point, exactly as Compound separates exchangeRateCurrent from exchangeRateStored.",
+      "proof_obligation": "For any sequence of calls and any time warp, the rate used by a value path equals the rate recomputed from scratch at that block timestamp.",
+      "real_incidents": [
+        "Compound cToken exchangeRateStored vs exchangeRateCurrent staleness class",
+        "Yearn-style pricePerShare read before harvest/accrual",
+        "Euler accrueInterest-before-mutate pattern"
+      ]
+    },
+    {
+      "id": "AV-MISSING-SHARE-INVARIANT",
+      "title": "Share math present with no enforced backing invariant",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "vault",
+        "staking",
+        "lending",
+        "derivative"
+      ],
+      "owasp": "SC04:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "convertToShares",
+        "convertToAssets",
+        "totalAssets",
+        "pricePerShare"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "missing_share_invariant"
+      ],
+      "related_detectors": [],
+      "description": "The protocol converts between shares and assets but no require/assert anywhere ties a share quantity back to an asset quantity. A conversion formula such as assets * totalSupply() / totalAssets() prices a share; it does not constrain one, so its presence is not evidence that shares stay backed.",
+      "exploit": "Find any path that mints shares without a matching asset inflow, or that lets assets leave without burning shares, and drain the backing while the share price formula keeps reporting a healthy ratio.",
+      "remediation": "Assert the backing property in the mutation path and add it as a Foundry invariant handler: convertToAssets(totalSupply()) <= totalAssets() at all times.",
+      "proof_obligation": "After every call, the asset value of all outstanding shares never exceeds the assets actually held.",
+      "real_incidents": [
+        "ERC-4626 inflation attack, documented in the ERC security considerations",
+        "OpenZeppelin ERC4626 _decimalsOffset / virtual shares mitigation"
+      ]
+    },
+    {
+      "id": "AV-MISSING-K",
+      "title": "Constant-product reserves mutated with no non-decreasing k check",
+      "severity": "HIGH",
+      "languages": [
+        "solidity",
+        "vyper"
+      ],
+      "protocol_types": [
+        "amm",
+        "pool"
+      ],
+      "owasp": "SC04:2026",
+      "cwe": [
+        "CWE-682"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "reserve0",
+        "reserve1",
+        "getReserves",
+        "sqrtPriceX96"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "missing_k_invariant"
+      ],
+      "related_detectors": [],
+      "description": "swap / mint / burn mutate reserve0 and reserve1 without re-reading the live balances and asserting that their product did not decrease, and without a Uniswap V2 style _update hook that does it implicitly.",
+      "exploit": "Use a fee-on-transfer or spoof token, or a path that moves tokens without going through the accounting, so the stored reserves overstate the real ones and LPs are paid out of each other's liquidity.",
+      "remediation": "Re-read balanceOf(address(this)) for both tokens after the operation and require the product to be at least the previous product, net of the intended fee.",
+      "proof_obligation": "After every swap/mint/burn, balance0 * balance1 >= reserve0 * reserve1 adjusted only by the protocol fee.",
+      "real_incidents": [
+        "Uniswap V2 Pair _update k-invariant check (fee-on-transfer protection)",
+        "Fee-on-transfer / spoof-token LP accounting findings in public contests"
+      ]
+    },
+    {
+      "id": "AV-TSTORE-DELETE-POISON",
+      "title": "Transient storage outliving a delete / pop of the entry it describes",
+      "severity": "MEDIUM",
+      "languages": [
+        "solidity"
+      ],
+      "protocol_types": [],
+      "owasp": "SC05:2026",
+      "cwe": [
+        "CWE-672"
+      ],
+      "swc": [],
+      "required_any_patterns": [
+        "tstore",
+        "TSTORE"
+      ],
+      "required_all_patterns": [],
+      "forbidden_patterns": [],
+      "fact_predicates": [
+        "tstore_delete_poison"
+      ],
+      "related_detectors": [],
+      "description": "A function writes transient storage and also deletes or pops the storage entry that slot describes. EIP-1153 transient slots live until the end of the transaction, so the marker outlives the record it referred to. A bare tstore with no delete is normal usage and is not flagged.",
+      "exploit": "Within one transaction, let the entry be deleted or popped while the transient marker is still set, then make a second call that trusts the marker and skips a check that no longer applies to any real record.",
+      "remediation": "Clear every transient slot in the same function that can delete or pop the matching entry, or key transient data on a value that cannot be reused.",
+      "proof_obligation": "No transient slot reads as set after the storage entry it describes has been deleted or popped within the same transaction.",
+      "real_incidents": [
+        "EIP-1153 transient storage semantics - slots persist for the whole transaction",
+        "Cancun upgrade transient-storage lifetime review guidance"
+      ]
     }
   ]
 }

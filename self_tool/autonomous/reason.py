@@ -126,6 +126,12 @@ _DEEP_PLAYBOOK_FACTS = {
     "AV-UNCHECKED-CALL": "unchecked_lowlevel_call",
     "AV-BALANCE-EQ": "balance_strict_eq",
     "AV-MAPPING-DELETE": "mapping_delete_struct",
+    # Protocol-math / invariant lens.
+    "AV-SECOND-ORDER-REENTRANCY": "second_order_reentrancy",
+    "AV-MISSING-ACCRUE": "missing_accrue_on_value_path",
+    "AV-MISSING-SHARE-INVARIANT": "missing_share_invariant",
+    "AV-MISSING-K": "missing_k_invariant",
+    "AV-TSTORE-DELETE-POISON": "tstore_delete_poison",
 }
 
 

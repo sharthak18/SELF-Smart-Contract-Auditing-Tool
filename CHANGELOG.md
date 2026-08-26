@@ -4,6 +4,41 @@ All notable changes to SELF are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Invariant-first protocol-math lens (`self_tool/autonomous/invariants.py`).
+  Five new understanding facts name accounting properties the code fails to
+  enforce: `missing_accrue_on_value_path`, `missing_share_invariant`,
+  `missing_k_invariant`, `missing_health_check`, and
+  `tstore_delete_poison`. A conversion formula such as
+  `assets * totalSupply() / totalAssets()` is deliberately *not* treated as an
+  invariant — it prices a share without constraining one — and a bare `tstore`
+  is not poison unless the same function also `delete`s or `.pop()`s the entry
+  it describes.
+- `propose_hypotheses()` emits targeted Foundry invariant handler sketches
+  (`INV-SHARE-BACKING`, `INV-EMPTY-VAULT`, `INV-K`, `INV-ACCRUE-FIRST`,
+  `INV-HEALTH`, `INV-VIEW-LOCK`, `INV-TSTORE-CLEAR`, `INV-SIG-BIND`) gated on
+  the detected protocol shape. They are surfaced as
+  `ProtocolUnderstanding.hypotheses`, in the JSON `to_dict()`, in the
+  retrieval `briefing()`, and in a new report section,
+  "Must-hold invariants (hypotheses, not proofs)".
+- Second-order reentrancy fact in the deep pass: a public function that writes
+  value state *after* delegating to a helper performing a low-level `.call`.
+  Skipped when either function carries a reentrancy guard, or when the public
+  function makes the call itself (that case is first-order and already
+  covered). Reported as `AV-SECOND-ORDER-REENTRANCY` with exploit path
+  `PATH-SECOND-ORDER-REENTRANCY`.
+- Brain playbooks `AV-SECOND-ORDER-REENTRANCY`, `AV-MISSING-ACCRUE`,
+  `AV-MISSING-SHARE-INVARIANT`, `AV-MISSING-K`, `AV-TSTORE-DELETE-POISON`, and
+  expert tactic `TAC-INVARIANT-FIRST`.
+
+No new catalog detector IDs; `RULE_VERSION` stays `2.3.0` and catalog ↔
+review-profile parity is unchanged at 161 rules. Nothing wraps an external
+scanner — the invariant lens is SELF's own reasoning. Test suite is 175
+(24 new in `tests/test_invariants.py`).
+
 ## [2.4.0] — 2026-08-25
 
 ### Added
