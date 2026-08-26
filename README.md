@@ -1,7 +1,7 @@
 # SELF — Smart Contract Exploit & Logic Finder
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
-[![Version](https://img.shields.io/badge/Version-2.4.0-red)](VERSION)
+[![Version](https://img.shields.io/badge/Version-2.5.0-red)](VERSION)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Offline](https://img.shields.io/badge/Scans-Offline-blueviolet)](SECURITY.md)
 [![Repo](https://img.shields.io/badge/Repo-GitHub-black)](https://github.com/sharthak18/SELF-Smart-Contract-Auditing-Tool)
@@ -100,7 +100,7 @@ python3 -m pip install -e .
 Verify:
 
 ```bash
-self --version              # 2.4.0
+self --version              # 2.5.0
 self --list-detectors       # full detector catalog
 self --knowledge-status     # OWASP coverage + knowledge sources
 ```
@@ -229,7 +229,7 @@ automatically re-surfaces the finding.
 ### Terminal summary
 
 ```
-SELF v2.4.0  scan of  /home/auditor/repo
+SELF v2.5.0  scan of  /home/auditor/repo
 CRITICAL findings   : 1
 HIGH      findings   : 4
 MEDIUM    findings   : 9
@@ -256,7 +256,7 @@ The Markdown report contains:
 
 ```json
 {
-  "version": "2.4.0",
+  "version": "2.5.0",
   "target": "/home/auditor/repo",
   "framework": "foundry",
   "project_fingerprint": "pf_…",

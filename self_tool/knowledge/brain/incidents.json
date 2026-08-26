@@ -501,7 +501,8 @@
       "root_cause_class": "user-supplied-domain-separator",
       "playbooks": [
         "AV-DOMAIN-SEPARATOR-ARG",
-        "AV-SIGNATURE-REPLAY"
+        "AV-SIGNATURE-REPLAY",
+        "AV-DOMAIN-SEPARATOR-CALLER-ARG"
       ],
       "facts": [
         "user_supplied_domain_separator",
@@ -582,6 +583,58 @@
       "lesson": "A full liquidation must zero the borrower's debt shares. If collateral is insufficient, mark bad debt explicitly instead of leaving a zombie position.",
       "references": [
         "https://code4rena.com/reports/2022-08-frax"
+      ]
+    },
+    {
+      "id": "INC-GNOSISPAY-ZODIAC-2026",
+      "name": "Gnosis Pay / Zodiac Roles & Delay module EIP-1271 bypass",
+      "date": "2026-06-01",
+      "loss_usd": 1500000,
+      "chain": "gnosis",
+      "protocol_types": [
+        "wallet",
+        "payments"
+      ],
+      "root_cause_class": "lowlevel-call-success-discarded",
+      "playbooks": [
+        "AV-LOWLEVEL-SUCCESS-DISCARD",
+        "AV-SIGNATURE-REPLAY"
+      ],
+      "facts": [
+        "lowlevel_call_success_discarded",
+        "return_data_decoded_without_success_check",
+        "has_signature_auth"
+      ],
+      "summary": "The Zodiac Delay/Roles modules (introduced v3.4.0, Oct 2023) validated EIP-1271 signatures via staticcall but discarded the success boolean before comparing bytes4(returnData) to the magic value. The attacker pre-deployed 41 contracts that always reverted with the 0x1626ba7e magic bytes as revert data, routed calls through a CompatibilityFallbackHandler and an intermediary Biconomy Safe, and used the forged 'valid signature' to queue and execute unauthorized withdrawals through the Delay module's cooldown.",
+      "lesson": "A reverted call still lets the callee fully control the returned data. Never decode or compare a low-level call's return data without first requiring success == true, and this applies to every staticcall/call/delegatecall, not only signature validation.",
+      "references": [
+        "https://soliditylang.org/",
+        "https://www.cryptotimes.io/2026/06/05/delay-module-trick-costs-gnosispay-265k-reports-certik/",
+        "https://cryptonews.net/news/security/33098702/"
+      ]
+    },
+    {
+      "id": "INC-SOLC-TSTORE-POISON-2026",
+      "name": "Solidity via-ir transient/persistent storage clearing collision (TSTORE Poison)",
+      "date": "2026-02-18",
+      "loss_usd": 0,
+      "chain": "ethereum",
+      "protocol_types": [],
+      "root_cause_class": "compiler-codegen-bug",
+      "playbooks": [
+        "AV-COMPILER-TSTORE-POISON"
+      ],
+      "facts": [
+        "solc_0_8_28_to_0_8_33",
+        "via_ir_enabled",
+        "transient_and_persistent_clear_same_unit"
+      ],
+      "summary": "Hexens disclosed a Solidity IR-codegen bug (solc 0.8.28-0.8.33, --via-ir only): the storage_set_to_zero_<type> Yul helper name omitted storage location, so when a contract cleared both a transient variable (delete) and a persistent value of a matching type, the first operation compiled determined whether the shared helper emitted sstore or tstore -- the second operation silently got the wrong opcode. No compiler warning, no revert, invisible to source review. Fixed in 0.8.34.",
+      "lesson": "Source-level review and ordinary tests cannot catch codegen bugs. Treat compiler version + build-flag combinations (especially --via-ir) as part of the attack surface, run differential compilation across versions, and never assume 'delete' on transient storage is safe on an untested compiler point release.",
+      "references": [
+        "https://soliditylang.org/blog/2026/02/18/transient-storage-clearing-helper-collision-bug/",
+        "https://hexens.io/research/solidity-compiler-bug-tstore-poison",
+        "https://etherscan.io/solcbuginfo?a=TransientStorageClearingHelperCollision"
       ]
     }
   ]

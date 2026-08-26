@@ -4,6 +4,50 @@ All notable changes to SELF are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] — 2026-08-26
+
+### Added
+
+- Six new hardcoded Solidity detectors, each with a dedicated review
+  profile, positive/negative fixtures, and unit tests:
+  - `SOL-CRIT-015` — low-level call result integrity: flags
+    `staticcall`/`call`/`delegatecall` sites where the boolean `success`
+    is discarded before the return data is decoded or compared (the
+    generalized ERC-1271 `isValidSignature` bypass pattern).
+  - `SOL-CRIT-016` / `SOL-HIGH-025` — Solidity `--via-ir` transient vs.
+    persistent storage clearing collision ("TSTORE Poison", solc
+    0.8.28–0.8.33, fixed in 0.8.34): flags a `transient` variable cleared
+    with `delete` alongside a persistent value of a matching type in the
+    same compilation unit under an affected/unpinned compiler version.
+  - `SOL-CRIT-017` — unguarded oracle-shaped view (`get_virtual_price`,
+    `getRate`, `pricePerShare`, …) exposed without its own reentrancy
+    guard, enabling read-only reentrancy against downstream integrators.
+  - `SOL-CRIT-018` — EIP-712 domain separator sourced from a caller
+    argument instead of derived on-chain from `block.chainid` and
+    `address(this)`.
+  - `SOL-HIGH-026` — unconditional ERC-2612 `permit()` call in a router
+    function with no try/catch + allowance fallback, enabling front-run
+    griefing/DoS of the batched call.
+  - Detector catalog grew from 161 to 167 IDs; full catalog ↔
+    review-profile parity preserved.
+- Knowledge brain: five new attack-vector playbooks
+  (`AV-LOWLEVEL-SUCCESS-DISCARD`, `AV-COMPILER-TSTORE-POISON`,
+  `AV-ORACLE-VIEW-UNGUARDED`, `AV-DOMAIN-SEPARATOR-CALLER-ARG`,
+  `AV-PERMIT-FRONTRUN-DOS`) and two new incident post-mortems
+  (`INC-GNOSISPAY-ZODIAC-2026` — the June 2026 Zodiac Roles/Delay
+  module EIP-1271 bypass, ~$1.5M; `INC-SOLC-TSTORE-POISON-2026` — the
+  Feb 2026 solc via-ir codegen bug) feeding `self train` retrieval and
+  autonomous reasoning.
+- Dependency-advisory scanning now recognizes a pinned `solc` version
+  plus `via_ir = true` in `foundry.toml` and flags the TSTORE Poison
+  compiler range (`DEP-SOLC-TSTORE-POISON-2026`).
+
+### Changed
+
+- Package version bumped to 2.5.0. `RULE_VERSION` stays `2.3.0`; the
+  new detector IDs are additive and do not change fingerprint semantics
+  for existing rules.
+
 ## [2.4.0] — 2026-08-25
 
 ### Added

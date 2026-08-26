@@ -162,6 +162,12 @@ def _from_foundry(text: str, path: str) -> List[Tuple[str, str, str, str]]:
     for match in re.finditer(r'tag\s*=\s*["\']v?([\d.]+)["\']', text):
         if "openzeppelin" in text.lower():
             out.append(("openzeppelin-contracts", match.group(1), "foundry", path))
+    # Pinned solc version + via_ir flag: needed to flag the transient/persistent
+    # storage clearing collision bug (solc 0.8.28-0.8.33 with --via-ir).
+    solc_m = re.search(r'^\s*solc(?:_version)?\s*=\s*["\']v?([\d.]+)["\']', text, re.MULTILINE | re.IGNORECASE)
+    via_ir_m = re.search(r'^\s*via_ir\s*=\s*true', text, re.MULTILINE | re.IGNORECASE)
+    if solc_m and via_ir_m:
+        out.append(("solc", solc_m.group(1), "foundry", path))
     return out
 
 

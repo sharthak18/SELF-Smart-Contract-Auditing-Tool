@@ -126,6 +126,33 @@ class DependencyTests(unittest.TestCase):
         hits = scan_dependencies([manifest])
         self.assertTrue(any(hit.package == "vyper" for hit in hits))
 
+    def test_foundry_solc_via_ir_matches_tstore_poison_advisory(self):
+        manifest = ManifestFile(
+            relative_path="foundry.toml",
+            kind="foundry",
+            content='[profile.default]\nsolc = "0.8.30"\nvia_ir = true\n',
+        )
+        hits = scan_dependencies([manifest])
+        self.assertTrue(any(hit.package == "solc" and hit.severity == "CRITICAL" for hit in hits))
+
+    def test_foundry_solc_without_via_ir_does_not_match(self):
+        manifest = ManifestFile(
+            relative_path="foundry.toml",
+            kind="foundry",
+            content='[profile.default]\nsolc = "0.8.30"\n',
+        )
+        hits = scan_dependencies([manifest])
+        self.assertFalse(any(hit.package == "solc" for hit in hits))
+
+    def test_foundry_solc_fixed_version_does_not_match(self):
+        manifest = ManifestFile(
+            relative_path="foundry.toml",
+            kind="foundry",
+            content='[profile.default]\nsolc = "0.8.34"\nvia_ir = true\n',
+        )
+        hits = scan_dependencies([manifest])
+        self.assertFalse(any(hit.package == "solc" for hit in hits))
+
 
 class IngestAndUnderstandTests(unittest.TestCase):
     def test_ingest_reads_manifests_and_source(self):
@@ -237,7 +264,7 @@ class PipelineTests(unittest.TestCase):
             regression_recipe="", source="symbolic",
         )
         audit = AutonomousAudit(
-            version="2.4.0", target=".", project_fingerprint="pf_x",
+            version="2.5.0", target=".", project_fingerprint="pf_x",
             understanding=understanding, static_issues=[], findings=[finding],
             exploit_paths=[], dependencies=[], retrieved=[], trained_on={},
             llm_used=False, llm_error="", elapsed=0.0,

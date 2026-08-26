@@ -23,6 +23,7 @@ def detect(file_ctx: FileContext) -> List[Issue]:
     _check_storage_collision(file_ctx, content, issues)
     _check_tx_origin(file_ctx, content, issues)
     _check_signature_replay(file_ctx, content, issues)
+    _check_caller_supplied_domain_separator(file_ctx, content, issues)
     return issues
 
 
@@ -273,3 +274,81 @@ def _check_signature_replay(file_ctx, content, issues):
         ],
         language="solidity",
     ))
+
+
+def _check_caller_supplied_domain_separator(file_ctx, content, issues):
+    """
+    SOL-CRIT-018: Caller-supplied EIP-712 domain separator.
+
+    A meta-transaction forwarder or signature verifier that accepts the
+    EIP-712 domain separator (or its component parts: name/version/
+    chainId/verifyingContract) as a FUNCTION ARGUMENT, rather than
+    computing it on-chain from `block.chainid` and `address(this)`, lets
+    an attacker construct \x19\x01 || attacker_domain || structHash and
+    replay a signature that was produced for a different chain or a
+    different verifying contract sharing the same forwarder.
+
+    Real-world shape: 2025 Code4rena "Next Generation" H-01 and multiple
+    Sherlock/C4 findings against custom EIP-712 verifiers that took
+    `domainSeparator` as a parameter instead of deriving it internally.
+    """
+    # Function parameter literally named domainSeparator / DOMAIN_SEPARATOR.
+    param_pattern = re.compile(
+        r'function\s+(\w+)\s*\([^)]*\b(domainSeparator|DOMAIN_SEPARATOR|_domainSeparator)\b[^)]*\)',
+        re.MULTILINE | re.IGNORECASE,
+    )
+    for m in param_pattern.finditer(content):
+        fname = m.group(1)
+        line = content[:m.start()].count('\n') + 1
+        issues.append(Issue(
+            id="SOL-CRIT-018",
+            title=f"Caller-Supplied EIP-712 Domain Separator in `{fname}()`",
+            severity=Severity.CRITICAL,
+            confidence=Confidence.MEDIUM,
+            file=file_ctx.relative_path,
+            line=line,
+            snippet=file_ctx.get_snippet(line, context=4),
+            description=(
+                f"`{fname}()` accepts a domain separator (or its raw components) as a "
+                "function argument instead of computing it on-chain from `block.chainid` "
+                "and `address(this)`. EIP-712's replay protection depends entirely on the "
+                "domain separator binding the signed message to a specific chain and "
+                "verifying contract. If the caller can supply that value, a signature "
+                "produced for one chain, contract, or token can be replayed against any "
+                "other deployment that shares this forwarder/verifier, because the "
+                "attacker simply resupplies the domain the signature was actually made "
+                "for."
+            ),
+            exploit_scenario=(
+                f"1. A user signs an EIP-712 message intended for `TokenA` on chain 1.\n"
+                f"2. `{fname}()` on a shared forwarder recomputes the digest using a "
+                "caller-supplied `domainSeparator` instead of deriving it from "
+                "`address(this)`/`block.chainid`.\n"
+                "3. Attacker calls the same forwarder against `TokenB` (or the same "
+                "contract on chain 2), passing the original domain separator the "
+                "signature was produced against.\n"
+                "4. The signature verifies successfully outside its intended scope — "
+                "cross-chain or cross-contract replay succeeds."
+            ),
+            remediation=(
+                "Compute the domain separator on-chain and never accept it (or its "
+                "components) from the caller:\n"
+                "```solidity\n"
+                "bytes32 private immutable _CACHED_DOMAIN_SEPARATOR;\n"
+                "uint256 private immutable _CACHED_CHAIN_ID;\n\n"
+                "function _domainSeparatorV4() internal view returns (bytes32) {\n"
+                "    if (block.chainid == _CACHED_CHAIN_ID) return _CACHED_DOMAIN_SEPARATOR;\n"
+                "    return _buildDomainSeparator();\n"
+                "}\n"
+                "```\n"
+                "Use OpenZeppelin's `EIP712` base contract, which already implements "
+                "this pattern, rather than threading a domain separator through "
+                "function parameters."
+            ),
+            references=[
+                "EIP-712: Typed structured data hashing and signing",
+                "SWC-121: Missing Protection against Signature Replay Attacks",
+                "https://code4rena.com/reports",
+            ],
+            language="solidity",
+        ))
